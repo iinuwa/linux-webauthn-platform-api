@@ -8,4 +8,7 @@ edition = "2021"
 [dependencies]
 async-std = "1.12.0"
 authenticator = { path = "/home/isaiah/Development/rust/authenticator-rs" }
+oo7 = "0.1.2"
+ring = "0.16.20"
+sha2 = "0.10.7"
 zbus = "3.13.1"

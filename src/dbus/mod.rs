@@ -19,11 +19,9 @@ struct CredentialManager {
 
 #[dbus_interface(name = "xyz.iinuwa.credentials.CredentialManager1")]
 impl CredentialManager {
-    /*
     async fn make_credential(&self, rp: RelyingParty, user: User, credential_parameters: PublicKeyCredentialParameters, client_data: String, options: MakeCredentialOptions) -> Result<()> {
         todo!();
     }
-    */
 
     async fn say_hello(&self, name: &str) -> String {
         format!("Hello {}!", name)
