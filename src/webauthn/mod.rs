@@ -10,7 +10,7 @@ pub enum Error {
     NotAllowedError,
     ConstraintError,
 }
-pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty, userEntity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
+pub(crate) fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO: 
@@ -18,8 +18,8 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty,
     // When this operation is invoked, the authenticator MUST perform the following procedure:
     // Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code equivalent to "UnknownError" and terminate the operation.
     if client_data_hash.len() != 32 { return Err(Error::UnknownError); }
-    if rpEntity.id.is_empty() || rpEntity.name.is_empty() { return Err(Error::UnknownError); }
-    if userEntity.id.is_empty() || userEntity.name.is_empty() { return Err(Error::UnknownError); }
+    if rp_entity.id.is_empty() || rp_entity.name.is_empty() { return Err(Error::UnknownError); }
+    if user_entity.id.is_empty() || user_entity.name.is_empty() { return Err(Error::UnknownError); }
 
     // Check if at least one of the specified combinations of PublicKeyCredentialType and cryptographic parameters in credTypesAndPubKeyAlgs is supported. If not, return an error code equivalent to "NotSupportedError" and terminate the operation.
     let cred_pub_key_parameters = match cred_pub_key_algs.iter().find(|p| p.cred_type == "public-key" && p.alg == -7) {
@@ -36,8 +36,8 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty,
         // authorization gesture confirming user consent for creating a new
         // credential. The authorization gesture MUST include a test of user
         // presence.
-        if let Some(found) = lookup_stored_credentials(id) {
-            if found.rpId == rpEntity.id && found.cred_type == cd.cred_type {
+        if let Some((found, rp)) = lookup_stored_credentials(cd.id) {
+            if rp.id == rp_entity.id && found.cred_type == cd.cred_type {
                 let has_consent: bool = ask_disclosure_consent();
                 // If the user confirms consent to create a new credential
                 if has_consent {
@@ -53,7 +53,6 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty,
             }
         }
     }
-
 
     // If requireResidentKey is true and the authenticator cannot store a client-side discoverable public key credential source, return an error code equivalent to "ConstraintError" and terminate the operation.
     const can_create_discoverable_credential: bool = true;
@@ -83,7 +82,7 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty,
     // Let (publicKey, privateKey) be a new pair of cryptographic keys using the combination of PublicKeyCredentialType and cryptographic parameters represented by the first item in credTypesAndPubKeyAlgs that is supported by this authenticator.
     let key_pair = KeyPair::new(cred_pub_key_parameters.alg);
         // Let userHandle be userEntity.id.
-    let user_handle = userEntity.id;
+    let user_handle = user_entity.id;
         // Let credentialSource be a new public key credential source with the fields:
     let credential_source = CredentialSource {
         // type
@@ -95,7 +94,7 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty,
         public_key: key_pair.public_key,
         // rpId
             // rpEntity.id
-        rpId: rpEntity.id,
+        rpId: rp_entity.id,
         // userHandle
             // userHandle
         user_handle,
@@ -114,7 +113,7 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rpEntity: RelyingParty,
 
         // Let credentials be this authenticator’s credentials map.
         // Set credentials[(rpEntity.id, userHandle)] to credentialSource.
-        let credential_id = set_discoverable_credential(rpEntity.id, user_handle, credential_source)?;
+        let credential_id = set_discoverable_credential(rp_entity.id, user_handle, credential_source)?;
         credential_id
     }
     // Otherwise:
@@ -211,10 +210,21 @@ extensions
 */
 }
 
-fn lookup_stored_credentials(id: Vec<u8>) -> Option<CredentialDescriptor> {
+fn lookup_stored_credentials(id: Vec<u8>) -> Option<(CredentialDescriptor, RelyingParty)> {
     todo!();
 }
 
+fn ask_disclosure_consent() -> bool {
+    todo!();
+}
+
+fn is_user_verification_available() -> bool {
+    todo!();
+}
+
+fn collect_authorization_gesture(require_user_presence: bool, require_user_verification: bool) -> Result<> {
+    todo!();
+}
 #[derive(DeserializeDict, Type)]
 pub(crate) struct RelyingParty {
     name: String,
@@ -222,7 +232,9 @@ pub(crate) struct RelyingParty {
 }
 
 #[derive(DeserializeDict, Type)]
+/// https://www.w3.org/TR/webauthn-3/#dictionary-user-credential-params
 pub(crate) struct User {
+    id: Vec<u8>,
     name: String,
     display_name: String,
 }
@@ -267,8 +279,15 @@ pub(crate) struct CredentialList(Vec<CredentialDescriptor>);
 
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
+/// https://www.w3.org/TR/webauthn-3/#dictionary-credential-descriptor
 pub(crate) struct CredentialDescriptor {
+    /// Type of the public key credential the caller is referring to.
+    ///
+    /// The value SHOULD be a member of PublicKeyCredentialType but client
+    /// platforms MUST ignore any PublicKeyCredentialDescriptor with an unknown
+    /// type.
     cred_type: String,
+    /// Credential ID of the public key credential the caller is referring to.
     id: Vec<u8>,
     transports: Vec<String>,
 }
