@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 async fn run(seed_key: Vec<u8>) -> Result<(), Box<dyn Error>> {
     let service_name = "xyz.iinuwa.credentials.CredentialManager";
     let path = "/xyz/iinuwa/credentials.CredentialManager";
+    webauthn::store::initialize();
     let _ = dbus::start_service(service_name, path, seed_key).await?;
     loop {
         // do something else, wait forever or timeout here:

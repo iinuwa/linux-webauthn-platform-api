@@ -1,24 +1,16 @@
-use std::collections::HashMap;
-use std::time::Duration;
-use std::fs::File;
+pub(crate) mod store;
 
-use libsecret::{SchemaAttributeType, Schema, SchemaFlags};
+use std::time::Duration;
+
 use ring::digest::{digest, self};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair};
 use zbus::zvariant::{DeserializeDict, Type};
 
+use store::{lookup_stored_credentials, store_credential};
+
 const ECDSA_ALGORITHM: EcdsaSigningAlgorithm = ECDSA_P256_SHA256_ASN1_SIGNING;
 const RNG: dyn SecureRandom = SystemRandom::new();
-const SCHEMA: Schema = {
-   let mut attributes = HashMap::new();
-    attributes.insert("number", SchemaAttributeType::Integer);
-    attributes.insert("string", SchemaAttributeType::String);
-    attributes.insert("even", SchemaAttributeType::Boolean);
-
-    let schema = Schema::new("some.app.Id", SchemaFlags::NONE, attributes); 
-    schema
-};
 
 pub enum Error {
     UnknownError,
@@ -27,6 +19,7 @@ pub enum Error {
     NotAllowedError,
     ConstraintError,
 }
+
 pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
@@ -180,7 +173,8 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
     authenticator_data.append(processed_extensions.to_bytes());
 
     // Create an attestation object for the new credential using the procedure specified in § 6.5.4 Generating an Attestation Object, using an authenticator-chosen attestation statement format, authenticatorData, and hash, as well as taking into account the value of enterpriseAttestationPossible. For more details on attestation, see § 6.5 Attestation.
-    let attestation_format = AttestationStatementFormat::Packed;
+    // TODO: attestation not supported for now
+    let attestation_format = AttestationStatementFormat::None;
     let attestation_object = create_attestation_object(attestation_format, authenticator_data, client_data_hash)?;
 
     // On successful completion of this operation, the authenticator returns the attestation object to the client.
@@ -226,25 +220,6 @@ fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, ring::error::Unspe
     };
 }
 
-async fn store_credential(credential_source: CredentialSource) -> Result<(), Error> {
-    let service = oo7::dbus::Service::new(oo7::dbus::Algorithm::Encrypted).await?;
-    let collection = service.with_label("WEBAUTHN").await?.unwrap();
-    collection.create_item(
-        "Item Label",
-        HashMap::from([(
-            "cred_id", credential_source.id,
-            "version", 1
-        )]),
-        credential_source.key_pair,
-        true,
-        "application/octet-stream"
-    ).await?;
-}
-
-fn lookup_stored_credentials(id: Vec<u8>) -> Option<(CredentialDescriptor, RelyingParty)> {
-    todo!();
-}
-
 fn ask_disclosure_consent() -> bool {
     todo!();
 }
@@ -259,6 +234,14 @@ fn collect_authorization_gesture(require_user_presence: bool, require_user_verif
 
 fn process_authenticator_extensions(extensions: ()) -> Result<(), Error> {
     todo!();
+}
+
+fn create_attestation_object(attestation_format: AttestationStatementFormat, authenticator_data: Vec<u8>, client_data_hash: Vec<u8>) -> Result<Vec<u8>, Error> {
+    if let AttestationStatementFormat::None = attestation_format {
+        todo!();
+    } else {
+        Err(Error::NotSupportedError)
+    }
 }
 #[derive(DeserializeDict, Type)]
 pub(crate) struct RelyingParty {
@@ -396,4 +379,9 @@ enum WebAuthnDeviceCounterType {
     PerCredential,
     /// Authenticator does not support a signature counter.
     Unsupported,
+}
+
+enum AttestationStatementFormat {
+    None,
+    Packed,
 }
