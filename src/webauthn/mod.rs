@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::fs::File;
 
 use libsecret::{SchemaAttributeType, Schema, SchemaFlags};
+use ring::digest::{digest, self};
 use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair};
 use zbus::zvariant::{DeserializeDict, Type};
@@ -26,7 +27,7 @@ pub enum Error {
     NotAllowedError,
     ConstraintError,
 }
-pub(crate) fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
+pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO: 
@@ -96,63 +97,54 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty
     // Once the authorization gesture has been completed and user consent has been obtained, generate a new credential object:
     // Let (publicKey, privateKey) be a new pair of cryptographic keys using the combination of PublicKeyCredentialType and cryptographic parameters represented by the first item in credTypesAndPubKeyAlgs that is supported by this authenticator.
     let key_pair = create_key_pair(cred_pub_key_parameters.alg)?;
-        // Let userHandle be userEntity.id.
+    // Let userHandle be userEntity.id.
     let user_handle = user_entity.id;
-        // Let credentialSource be a new public key credential source with the fields:
-    let credential_source = CredentialSource {
+
+    // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
+        // Let credentialId be a new credential id.
+    // Note: We'll always create a discoverable credential, so generate a random credential ID.
+    let credential_id: Vec<u8> = ring::rand::generate(&RNG)?;
+
+    // Let credentialSource be a new public key credential source with the fields:
+    let mut credential_source = CredentialSource {
         // type
             // public-key.
-        cred_type: "public-key",
+        cred_type: PublicKeyCredentialType::PublicKey,
+        // Set credentialSource.id to credentialId.
+        id: credential_id,
         // privateKey
             // privateKey
-        private_key: key_pair.private_key,
-        public_key: key_pair.public_key,
+        private_key: key_pair.as_ref(),
         // rpId
             // rpEntity.id
-        rpId: rp_entity.id,
+        rp_id: rp_entity.id,
         // userHandle
             // userHandle
-        user_handle,
+        user_handle: Some(user_handle),
         // otherUI
             // Any other information the authenticator chooses to include.
         other_ui: None,
     };
 
-    // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
-    let credential_id: Vec<u8> = if require_resident_key {
-        // Let credentialId be a new credential id.
-        let credential_id = ring::rand::generate(&RNG)?;
-
-        // Set credentialSource.id to credentialId.
-        let credential_source.id = credential_id;
-
-        // Let credentials be this authenticator’s credentials map.
-        // Set credentials[(rpEntity.id, userHandle)] to credentialSource.
-        let credential_id = set_discoverable_credential(rp_entity.id, user_handle, credential_source)?;
-        credential_id
-    }
-    // Otherwise:
-    else {
-        // Let credentialId be the result of serializing and encrypting credentialSource so that only this authenticator can decrypt it.
-        let  credential_id = make_credential_id(credential_source.private_key)?;
-    }?;
+    store_credential(credential_source)?;
 
     // If any error occurred while creating the new credential object, return an error code equivalent to "UnknownError" and terminate the operation.
 
     // Let processedExtensions be the result of authenticator extension processing for each supported extension identifier → authenticator extension input in extensions.
     let processed_extensions = if let Some(extensions) = extensions {
-        let processed_extensions = process_authenticator_extensions(extensions)?;
+        process_authenticator_extensions(extensions).expect("Extension processing not yet supported");
     };
 
     // If the authenticator:
 
-    let signature_counter = match authenticator.counter_type() {
+    let counter_type = WebAuthnDeviceCounterType::PerCredential;
+    let signature_counter = match counter_type {
         // is a U2F device
             // let the signature counter value for the new credential be zero. (U2F devices may support signature counters but do not return a counter when making a credential. See [FIDO-U2F-Message-Formats].)
         WebAuthnDeviceCounterType::U2F => 0,
         // supports a global signature counter
             // Use the global signature counter's actual value when generating authenticator data.
-        WebAuthnDeviceCounterType::Global => authenticator.sign_count,
+        WebAuthnDeviceCounterType::Global => todo!(), // authenticator.sign_count
         // supports a per credential signature counter
 
             // allocate the counter, associate it with the new credential, and initialize the counter value as zero.
@@ -180,8 +172,9 @@ pub(crate) fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty
 
     // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data, including attestedCredentialData as the attestedCredentialData and processedExtensions, if any, as the extensions.
     let mut authenticator_data: Vec<u8> = Vec::new();
-    authenticator_data.append(sha_256_hash(credential_source.rp_id.hash));
-    authenticator_data.append(flags);
+    let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.hash);
+    authenticator_data.append(rp_id_hash);
+    authenticator_data.append(5); // UP, UV
     authenticator_data.append(signature_counter);
     authenticator_data.append(attested_credential_data.as_mut());
     authenticator_data.append(processed_extensions.to_bytes());
@@ -225,21 +218,24 @@ extensions
 */
 }
 
-async fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, ring::error::Unspecified> {
+fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, ring::error::Unspecified> {
     // TODO: `alg` is just COSE parameters: do we want COSE to leak here , or should we define our own?
     let key_pair = match alg {
         -7 => EcdsaKeyPair::generate_pkcs8(&ECDSA_ALGORITHM, &RNG)?,
         _ => todo!("Unknown signature algorithm given pair generated"),
     };
+}
 
+async fn store_credential(credential_source: CredentialSource) -> Result<(), Error> {
     let service = oo7::dbus::Service::new(oo7::dbus::Algorithm::Encrypted).await?;
     let collection = service.with_label("WEBAUTHN").await?.unwrap();
     collection.create_item(
         "Item Label",
         HashMap::from([(
-            "cred_id", id,
+            "cred_id", credential_source.id,
+            "version", 1
         )]),
-        key_pair,
+        credential_source.key_pair,
         true,
         "application/octet-stream"
     ).await?;
@@ -258,6 +254,10 @@ fn is_user_verification_available() -> bool {
 }
 
 fn collect_authorization_gesture(require_user_presence: bool, require_user_verification: bool) -> Result<> {
+    todo!();
+}
+
+fn process_authenticator_extensions(extensions: ()) -> Result<(), Error> {
     todo!();
 }
 #[derive(DeserializeDict, Type)]
@@ -350,4 +350,50 @@ pub(crate) struct AuthenticatorSelectionCriteria {
 pub(crate) struct PublicKeyCredentialParameters {
     cred_type: String,
     alg: i64,
+}
+
+struct CredentialSource {
+    cred_type: PublicKeyCredentialType,
+
+    /// A probabilistically-unique byte sequence identifying a public key
+    /// credential source and its authentication assertions.
+    id: Vec<u8>,
+
+    /// The credential private key
+    private_key: Vec<u8>,
+
+    /// The Relying Party Identifier, for the Relying Party this public key
+    /// credential source is scoped to.
+    rp_id: String,
+
+    /// The user handle is specified by a Relying Party, as the value of
+    /// `user.id`, and used to map a specific public key credential to a specific
+    /// user account with the Relying Party. Authenticators in turn map RP IDs
+    /// and user handle pairs to public key credential sources.
+    /// 
+    /// A user handle is an opaque byte sequence with a maximum size of 64
+    /// bytes, and is not meant to be displayed to the user.
+    user_handle: Option<Vec<u8>>,
+
+    // Any other information the authenticator chooses to include.
+    /// other information used by the authenticator to inform its UI. For
+    /// example, this might include the user’s displayName. otherUI is a
+    /// mutable item and SHOULD NOT be bound to the public key credential
+    /// source in a way that prevents otherUI from being updated.
+    other_ui: Option<String>,
+}
+
+enum PublicKeyCredentialType {
+    PublicKey,
+}
+enum WebAuthnDeviceCounterType {
+    /// Authenticator is a U2F device (and therefore does not support a counter
+    /// on registration and may or may not support a counter on assertion).
+    U2F,
+    /// Authenticator supports a global signature counter.
+    Global,
+    /// Authenticator supports a per credential signature counter.
+    PerCredential,
+    /// Authenticator does not support a signature counter.
+    Unsupported,
 }
