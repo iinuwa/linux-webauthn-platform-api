@@ -3,15 +3,18 @@ pub(crate) mod store;
 use std::time::Duration;
 
 use ring::digest::{digest, self};
+use ring::pkcs8::Document;
 use ring::rand::{SecureRandom, SystemRandom};
-use ring::signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair};
+use ring::signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair};
 use zbus::zvariant::{DeserializeDict, Type};
 
 use store::{lookup_stored_credentials, store_credential};
 
-const ECDSA_ALGORITHM: EcdsaSigningAlgorithm = ECDSA_P256_SHA256_ASN1_SIGNING;
-const RNG: dyn SecureRandom = SystemRandom::new();
+static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
+// static RNG: &Box<dyn SecureRandom> = &Box::new(SystemRandom::new());
 
+
+#[derive(Debug)]
 pub enum Error {
     UnknownError,
     NotSupportedError,
@@ -46,7 +49,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         // authorization gesture confirming user consent for creating a new
         // credential. The authorization gesture MUST include a test of user
         // presence.
-        if let Some((found, rp)) = lookup_stored_credentials(cd.id) {
+        if let Some((found, rp)) = lookup_stored_credentials(cd.id.clone()) {
             if rp.id == rp_entity.id && found.cred_type == cd.cred_type {
                 let has_consent: bool = ask_disclosure_consent();
                 // If the user confirms consent to create a new credential
@@ -96,7 +99,10 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
     // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
         // Let credentialId be a new credential id.
     // Note: We'll always create a discoverable credential, so generate a random credential ID.
-    let credential_id: Vec<u8> = ring::rand::generate(&RNG)?;
+    let credential_id: Vec<u8> = ring::rand::generate::<[u8; 16]>(&SystemRandom::new())
+        .map_err(|e| Error::UnknownError)?
+        .expose()
+        .into();
 
     // Let credentialSource be a new public key credential source with the fields:
     let mut credential_source = CredentialSource {
@@ -107,7 +113,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         id: credential_id,
         // privateKey
             // privateKey
-        private_key: key_pair.as_ref(),
+        private_key: key_pair.as_ref().to_vec(),
         // rpId
             // rpEntity.id
         rp_id: rp_entity.id,
@@ -119,7 +125,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         other_ui: None,
     };
 
-    store_credential(credential_source)?;
+    store_credential(credential_source).await?;
 
     // If any error occurred while creating the new credential object, return an error code equivalent to "UnknownError" and terminate the operation.
 
@@ -156,12 +162,14 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         credential_public_key: key_pair.public_key,
     };
     */
-    let aaguid = None;
+    todo!();
+    /*
+    let aaguid = vec![0 as u8; 16];
     let mut attested_credential_data: Vec<u8> = Vec::new();
-    attested_credential_data.push(aaguid.to_bytes());
+    attested_credential_data.append(&mut aaguid);
     attested_credential_data.append((credential_id.len() as u16).to_be_bytes().to_vec().as_mut());
     attested_credential_data.append(credential_id.clone().as_mut());
-    attested_credential_data.append(key_pair.public_key.to_bytes());
+    attested_credential_data.append(cose_encode_public_key(cred_pub_key_parameters, key_pair));
 
     // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data, including attestedCredentialData as the attestedCredentialData and processedExtensions, if any, as the extensions.
     let mut authenticator_data: Vec<u8> = Vec::new();
@@ -179,6 +187,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
 
     // On successful completion of this operation, the authenticator returns the attestation object to the client.
     Ok(attestation_object)
+    */
 
 
     /*
@@ -212,12 +221,13 @@ extensions
 */
 }
 
-fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, ring::error::Unspecified> {
+fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, Error> {
     // TODO: `alg` is just COSE parameters: do we want COSE to leak here , or should we define our own?
     let key_pair = match alg {
-        -7 => EcdsaKeyPair::generate_pkcs8(&ECDSA_ALGORITHM, &RNG)?,
+        -7 => EcdsaKeyPair::generate_pkcs8(P256, &SystemRandom::new()),
         _ => todo!("Unknown signature algorithm given pair generated"),
     };
+    key_pair.map_err(|e| Error::UnknownError)
 }
 
 fn ask_disclosure_consent() -> bool {
@@ -228,7 +238,7 @@ fn is_user_verification_available() -> bool {
     todo!();
 }
 
-fn collect_authorization_gesture(require_user_presence: bool, require_user_verification: bool) -> Result<> {
+fn collect_authorization_gesture(require_user_presence: bool, require_user_verification: bool) -> Result<(), Error> {
     todo!();
 }
 
@@ -242,6 +252,75 @@ fn create_attestation_object(attestation_format: AttestationStatementFormat, aut
     } else {
         Err(Error::NotSupportedError)
     }
+}
+
+fn cose_encode_public_key(parameters: PublicKeyCredentialParameters, pkcs8_document: Document) -> Result<Vec<u8>, Error> {
+    match parameters.alg {
+        -7 => {
+            let key_pair = EcdsaKeyPair::from_pkcs8(&P256, pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
+            let public_key = key_pair.public_key().as_ref();
+            // ring outputs public keys with uncompressed 32-byte x and y coordinates
+            if public_key.len() != 65 || public_key[0] != 0x04 {
+                return Err(Error::UnknownError)
+            }
+            let (x, y) = public_key[1..].split_at(32);
+            let mut cose_key: Vec<u8> = Vec::new();
+            cose_key.push(0b101_00101); // map with 5 items
+            cose_key.extend([0b000_00001, 0b000_00010]); // kty (1): EC2 (2)
+            cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): ECDSA-SHA256 (-7)
+            cose_key.extend([0b001_00000, 0b000_00001]); // crv (-1): P256 (1)
+            cose_key.extend([0b001_00001, 0b010_11000, 0b0010_0000]); // x (-2): <32-byte string>
+            cose_key.extend(x);
+            cose_key.extend([0b001_00010, 0b010_11000, 0b0010_0000]); // y (-3): <32-byte string>
+            cose_key.extend(y);
+            Ok(cose_key)
+        },
+        -8 => {
+            // TODO: Check this
+            let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
+            let public_key = key_pair.public_key().as_ref();
+            let mut cose_key: Vec<u8> = Vec::new();
+            cose_key.push(0b101_00100); // map with 4 items
+            cose_key.extend([0b000_00001, 0b000_00001]); // kty (1): OKP (1)
+            cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): EdDSA (-8)
+            cose_key.extend([0b001_00000, 0b000_00110]); // crv (-1): ED25519 (6)
+            cose_key.extend([0b001_00001, 0b010_11000, 0b0010_0000]); // x (-2): <32-byte string>
+            cose_key.extend(public_key);
+            Ok(cose_key)
+        },
+        -257 => {
+            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
+            let public_key = key_pair.public_key().as_ref();
+            // TODO: This is ASN.1 with DER encoding. We could parse this to extract
+            // the modulus and exponent properly, but the key length will
+            // probably not change, so we're winging it
+            // https://stackoverflow.com/a/12750816/11931787
+            let n = &public_key[9..(9+256)];
+            let e = &public_key[public_key.len()-3..];
+            debug_assert_eq!(n.len(), key_pair.public_modulus_len());
+            let mut cose_key: Vec<u8> = Vec::new();
+            cose_key.push(0b101_00100); // map with 4 items
+            cose_key.extend([0b000_00001, 0b000_00010]); // kty (1): RSA (3)
+            cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): RSASSA-PKCS1-v1_5 using SHA-256 (-257)
+            cose_key.extend([0b001_00000, 0b010_11001, 0b0000_0001, 0b0000_0000]); // n (-1): <256-byte string>
+            cose_key.extend(n);
+            cose_key.extend([0b001_00001, 0b010_00011]); // e (-2): <3-byte string>
+            cose_key.extend(e);
+            Ok(cose_key)
+        },
+        _ => todo!(),
+    }
+}
+
+#[test]
+fn test_rsa_key_pair() {
+    let f = std::fs::read("rsa-2048-private-key.pk8").unwrap();
+    let key_pair = RsaKeyPair::from_pkcs8(&f).unwrap();
+    // println!(key_pair.public_key().as_ref().iter().map(|b| format!("{b:2x}").to_string()).collect::<Vec<String>>().join(""));
+    for b in key_pair.public_key().as_ref().to_vec() {
+        print!("{b:02x}");
+    }
+    println!();
 }
 #[derive(DeserializeDict, Type)]
 pub(crate) struct RelyingParty {

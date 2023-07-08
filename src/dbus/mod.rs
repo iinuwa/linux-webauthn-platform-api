@@ -17,11 +17,14 @@ struct CredentialManager {
     seed_key: Vec<u8>,
 }
 
+
 #[dbus_interface(name = "xyz.iinuwa.credentials.CredentialManager1")]
 impl CredentialManager {
-    async fn make_credential(&self, rp: RelyingParty, user: User, credential_parameters: PublicKeyCredentialParameters, client_data: String, options: MakeCredentialOptions) -> Result<()> {
+    /*
+    async fn make_credential(&self, rp: RelyingParty, user: User, credential_parameters: PublicKeyCredentialParameters, client_data: String, options: MakeCredentialOptions) -> Result<Vec<u8>> {
         todo!();
     }
+    */
 
     async fn say_hello(&self, name: &str) -> String {
         format!("Hello {}!", name)
