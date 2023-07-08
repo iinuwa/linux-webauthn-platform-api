@@ -49,6 +49,6 @@ pub(super) async fn store_credential(credential_source: CredentialSource) -> Res
     Ok(())
 }
 
-pub(super) fn lookup_stored_credentials(id: Vec<u8>) -> Option<(CredentialDescriptor, RelyingParty)> {
+pub(super) fn lookup_stored_credentials(_id: Vec<u8>) -> Option<(CredentialDescriptor, RelyingParty)> {
     todo!();
 }

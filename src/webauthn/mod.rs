@@ -3,7 +3,7 @@ pub(crate) mod store;
 use std::time::Duration;
 
 
-use ring::{pkcs8::Document, rand::{SecureRandom, SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair, RSA_PKCS1_SHA256, VerificationAlgorithm}};
+use ring::{pkcs8::Document, rand::{SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair}};
 use zbus::zvariant::{DeserializeDict, Type};
 use store::{lookup_stored_credentials, store_credential};
 
@@ -20,7 +20,7 @@ pub enum Error {
     ConstraintError,
 }
 
-pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
+pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, _enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO: 
@@ -102,12 +102,12 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         // Let credentialId be a new credential id.
     // Note: We'll always create a discoverable credential, so generate a random credential ID.
     let credential_id: Vec<u8> = ring::rand::generate::<[u8; 16]>(&SystemRandom::new())
-        .map_err(|e| Error::UnknownError)?
+        .map_err(|_e| Error::UnknownError)?
         .expose()
         .into();
 
     // Let credentialSource be a new public key credential source with the fields:
-    let mut credential_source = CredentialSource {
+    let credential_source = CredentialSource {
         // type
             // public-key.
         cred_type: PublicKeyCredentialType::PublicKey,
@@ -132,14 +132,14 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
     // If any error occurred while creating the new credential object, return an error code equivalent to "UnknownError" and terminate the operation.
 
     // Let processedExtensions be the result of authenticator extension processing for each supported extension identifier → authenticator extension input in extensions.
-    let processed_extensions = if let Some(extensions) = extensions {
+    let _processed_extensions = if let Some(extensions) = extensions {
         process_authenticator_extensions(extensions).expect("Extension processing not yet supported");
     };
 
     // If the authenticator:
 
     let counter_type = WebAuthnDeviceCounterType::PerCredential;
-    let signature_counter = match counter_type {
+    let _signature_counter = match counter_type {
         // is a U2F device
             // let the signature counter value for the new credential be zero. (U2F devices may support signature counters but do not return a counter when making a credential. See [FIDO-U2F-Message-Formats].)
         WebAuthnDeviceCounterType::U2F => 0,
@@ -231,7 +231,7 @@ fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, Error> {
         // -257 => RsaKeyPair::generate_pkcs8(rng), // TODO: Use openssl or something to generate keys, since ring doesn't support it
         _ => todo!("Unknown signature algorithm given pair generated"),
     };
-    key_pair.map_err(|e| Error::UnknownError)
+    key_pair.map_err(|_e| Error::UnknownError)
 }
 
 fn ask_disclosure_consent() -> bool {
@@ -242,15 +242,15 @@ fn is_user_verification_available() -> bool {
     todo!();
 }
 
-fn collect_authorization_gesture(require_user_presence: bool, require_user_verification: bool) -> Result<(), Error> {
+fn collect_authorization_gesture(_require_user_presence: bool, _require_user_verification: bool) -> Result<(), Error> {
     todo!();
 }
 
-fn process_authenticator_extensions(extensions: ()) -> Result<(), Error> {
+fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
     todo!();
 }
 
-fn create_attestation_object(attestation_format: AttestationStatementFormat, authenticator_data: Vec<u8>, client_data_hash: Vec<u8>) -> Result<Vec<u8>, Error> {
+fn create_attestation_object(attestation_format: AttestationStatementFormat, _authenticator_data: Vec<u8>, _client_data_hash: Vec<u8>) -> Result<Vec<u8>, Error> {
     if let AttestationStatementFormat::None = attestation_format {
         todo!();
     } else {

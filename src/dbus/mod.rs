@@ -1,6 +1,6 @@
 use zbus::{dbus_interface, Connection, ConnectionBuilder, Result};
 
-use crate::webauthn::{MakeCredentialOptions, PublicKeyCredentialParameters, RelyingParty, User};
+
 
 pub(crate) async fn start_service(
     service_name: &str,
