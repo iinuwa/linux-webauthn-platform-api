@@ -2,12 +2,9 @@ pub(crate) mod store;
 
 use std::time::Duration;
 
-use ring::digest::{digest, self};
-use ring::pkcs8::Document;
-use ring::rand::{SecureRandom, SystemRandom};
-use ring::signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair};
-use zbus::zvariant::{DeserializeDict, Type};
 
+use ring::{pkcs8::Document, rand::{SecureRandom, SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair, RSA_PKCS1_SHA256, VerificationAlgorithm}};
+use zbus::zvariant::{DeserializeDict, Type};
 use store::{lookup_stored_credentials, store_credential};
 
 static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
@@ -27,6 +24,11 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO: 
+    let supported_algorithms: [i64; 2] = [
+        -8, // Ed25519
+        -7, // P-256
+        // -257 // RSA-PKCS1-SHA256, TODO: key generation not supported right now
+    ];
     
     // When this operation is invoked, the authenticator MUST perform the following procedure:
     // Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code equivalent to "UnknownError" and terminate the operation.
@@ -35,7 +37,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
     if user_entity.id.is_empty() || user_entity.name.is_empty() { return Err(Error::UnknownError); }
 
     // Check if at least one of the specified combinations of PublicKeyCredentialType and cryptographic parameters in credTypesAndPubKeyAlgs is supported. If not, return an error code equivalent to "NotSupportedError" and terminate the operation.
-    let cred_pub_key_parameters = match cred_pub_key_algs.iter().find(|p| p.cred_type == "public-key" && p.alg == -7) {
+    let cred_pub_key_parameters = match cred_pub_key_algs.iter().find(|p| p.cred_type == "public-key" && supported_algorithms.contains(&p.alg)) {
         Some(cred_pub_key_parameters) => { cred_pub_key_parameters },
         None => { return Err(Error::NotSupportedError )},
     };
@@ -222,9 +224,11 @@ extensions
 }
 
 fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, Error> {
-    // TODO: `alg` is just COSE parameters: do we want COSE to leak here , or should we define our own?
+    let rng = &SystemRandom::new();
     let key_pair = match alg {
-        -7 => EcdsaKeyPair::generate_pkcs8(P256, &SystemRandom::new()),
+        -7 => EcdsaKeyPair::generate_pkcs8(P256, rng),
+        -8 => Ed25519KeyPair::generate_pkcs8(rng),
+        // -257 => RsaKeyPair::generate_pkcs8(rng), // TODO: Use openssl or something to generate keys, since ring doesn't support it
         _ => todo!("Unknown signature algorithm given pair generated"),
     };
     key_pair.map_err(|e| Error::UnknownError)
