@@ -1,9 +1,10 @@
 pub(crate) mod store;
+// mod cbor;
 
 use std::time::Duration;
 
 
-use ring::{pkcs8::Document, rand::{SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair}};
+use ring::{digest::digest, pkcs8::Document, rand::{SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair, RSA_PKCS1_SHA256}, digest};
 use zbus::zvariant::{DeserializeDict, Type};
 use store::{lookup_stored_credentials, store_credential};
 
@@ -20,7 +21,7 @@ pub enum Error {
     ConstraintError,
 }
 
-pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, _enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<(), Error> {
+pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: RelyingParty, user_entity: User, require_resident_key: bool, require_user_presence: bool, require_user_verification: bool, cred_pub_key_algs: Vec<PublicKeyCredentialParameters>, exclude_credential_descriptor_list: Vec<CredentialDescriptor>, enterprise_attestation_possible: bool, extensions: Option<()>) -> Result<Vec<u8>, Error> {
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO: 
@@ -112,10 +113,10 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
             // public-key.
         cred_type: PublicKeyCredentialType::PublicKey,
         // Set credentialSource.id to credentialId.
-        id: credential_id,
+        id: credential_id.to_vec(),
         // privateKey
             // privateKey
-        private_key: key_pair.as_ref().to_vec(),
+        private_key: (&key_pair.as_ref()).to_vec(),
         // rpId
             // rpEntity.id
         rp_id: rp_entity.id,
@@ -127,7 +128,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         other_ui: None,
     };
 
-    store_credential(credential_source).await?;
+    store_credential(credential_source.clone()).await?;
 
     // If any error occurred while creating the new credential object, return an error code equivalent to "UnknownError" and terminate the operation.
 
@@ -139,7 +140,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
     // If the authenticator:
 
     let counter_type = WebAuthnDeviceCounterType::PerCredential;
-    let _signature_counter = match counter_type {
+    let signature_counter: u32 = match counter_type {
         // is a U2F device
             // let the signature counter value for the new credential be zero. (U2F devices may support signature counters but do not return a counter when making a credential. See [FIDO-U2F-Message-Formats].)
         WebAuthnDeviceCounterType::U2F => 0,
@@ -164,32 +165,52 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         credential_public_key: key_pair.public_key,
     };
     */
-    todo!();
-    /*
-    let aaguid = vec![0 as u8; 16];
+    let mut aaguid = vec![0 as u8; 16];
     let mut attested_credential_data: Vec<u8> = Vec::new();
     attested_credential_data.append(&mut aaguid);
-    attested_credential_data.append((credential_id.len() as u16).to_be_bytes().to_vec().as_mut());
-    attested_credential_data.append(credential_id.clone().as_mut());
-    attested_credential_data.append(cose_encode_public_key(cred_pub_key_parameters, key_pair));
+    let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
+    let mut cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
+    &attested_credential_data.extend(&cred_length_bytes);
+    attested_credential_data.extend(&credential_id.clone());
+    let public_key = cose_encode_public_key(&cred_pub_key_parameters, &key_pair)?;
+    attested_credential_data.extend(&public_key);
 
     // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data, including attestedCredentialData as the attestedCredentialData and processedExtensions, if any, as the extensions.
     let mut authenticator_data: Vec<u8> = Vec::new();
-    let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.hash);
-    authenticator_data.append(rp_id_hash);
-    authenticator_data.append(5); // UP, UV
-    authenticator_data.append(signature_counter);
-    authenticator_data.append(attested_credential_data.as_mut());
-    authenticator_data.append(processed_extensions.to_bytes());
+    let rp_id_hash = digest(&digest::SHA256, (&credential_source).rp_id.as_bytes());
+    authenticator_data.extend(rp_id_hash.as_ref());
+    authenticator_data.push(0b0100_0101); // UP, UV, AT
+    authenticator_data.extend(signature_counter.to_be_bytes());
+    authenticator_data.extend(&attested_credential_data);
+    // TODO: authenticator_data.append(processed_extensions.to_bytes());
 
     // Create an attestation object for the new credential using the procedure specified in § 6.5.4 Generating an Attestation Object, using an authenticator-chosen attestation statement format, authenticatorData, and hash, as well as taking into account the value of enterpriseAttestationPossible. For more details on attestation, see § 6.5 Attestation.
     // TODO: attestation not supported for now
-    let attestation_format = AttestationStatementFormat::None;
-    let attestation_object = create_attestation_object(attestation_format, authenticator_data, client_data_hash)?;
+    let signed_data: Vec<u8> = [authenticator_data.as_slice(), client_data_hash.as_slice()].concat();
+    let rng = &SystemRandom::new();
+    let signature = match cred_pub_key_parameters.alg {
+        -7 => {
+            let ecdsa = EcdsaKeyPair::from_pkcs8(&P256, &key_pair.as_ref()).unwrap();
+                ecdsa.sign(rng, &signed_data).unwrap().as_ref().to_vec()
+        },
+        -8 => {
+            let eddsa = Ed25519KeyPair::from_pkcs8(&key_pair.as_ref()).unwrap();
+            eddsa.sign(&signed_data).as_ref().to_vec()
+        }
+        -257 => {
+            let rsa = RsaKeyPair::from_pkcs8(&key_pair.as_ref()).unwrap();
+            let mut signature = vec![0; rsa.public_modulus_len()];
+            rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
+            signature
+        },
+        _ => {
+            return Err(Error::NotSupportedError)
+        }
+    };
+    let attestation_object = create_attestation_object(cred_pub_key_parameters.alg, &authenticator_data, signature, enterprise_attestation_possible)?;
 
     // On successful completion of this operation, the authenticator returns the attestation object to the client.
     Ok(attestation_object)
-    */
 
 
     /*
@@ -250,15 +271,33 @@ fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
     todo!();
 }
 
-fn create_attestation_object(attestation_format: AttestationStatementFormat, _authenticator_data: Vec<u8>, _client_data_hash: Vec<u8>) -> Result<Vec<u8>, Error> {
-    if let AttestationStatementFormat::None = attestation_format {
-        todo!();
-    } else {
-        Err(Error::NotSupportedError)
-    }
+fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signature: Vec<u8>, enterprise_attestation_possible: bool) -> Result<Vec<u8>, Error> {
+        let mut attestation_object = Vec::new();
+        attestation_object.push(0b101_00011); // map with 3 elements
+        attestation_object.push(0b011_01000); // <text, length 8>
+        attestation_object.extend(b"authData");
+        attestation_object.push(0b010_01000); // <bytes, length 8>
+        attestation_object.push(0b011_00011); // <text, length 3>
+        attestation_object.extend(b"fmt");
+        attestation_object.push(0b011_00110); // <text, length 6>
+        attestation_object.extend(b"packed");
+        attestation_object.push(0b011_00111); // <text, length 7>
+        attestation_object.extend(b"attStmt");
+        attestation_object.push(0b101_00010); // map, length 2
+        attestation_object.push(0b011_00100); // text, length 4
+        attestation_object.extend(b"authData");
+        attestation_object.push (0b011_00000); // bytes, length authenticator_data.len() // todo:
+        attestation_object.extend(authenticator_data);
+        attestation_object.push(0b011_00011); // text, length 3
+        attestation_object.extend(b"alg");
+        attestation_object.push(((algorithm + 1) as u8) | 0b001000); // TODO:
+        attestation_object.push(0b011_00011); // text, length 3
+        attestation_object.extend(b"alg");
+        attestation_object.push(((algorithm + 1) as u8) | 0b001000);
+        Ok(attestation_object)
 }
 
-fn cose_encode_public_key(parameters: PublicKeyCredentialParameters, pkcs8_document: Document) -> Result<Vec<u8>, Error> {
+fn cose_encode_public_key(parameters: &PublicKeyCredentialParameters, pkcs8_document: &Document) -> Result<Vec<u8>, Error> {
     match parameters.alg {
         -7 => {
             let key_pair = EcdsaKeyPair::from_pkcs8(&P256, pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
@@ -418,6 +457,7 @@ pub(crate) struct PublicKeyCredentialParameters {
     alg: i64,
 }
 
+#[derive(Clone)]
 struct CredentialSource {
     cred_type: PublicKeyCredentialType,
 
@@ -449,6 +489,7 @@ struct CredentialSource {
     other_ui: Option<String>,
 }
 
+#[derive(Clone)]
 enum PublicKeyCredentialType {
     PublicKey,
 }
