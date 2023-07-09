@@ -417,10 +417,10 @@ pub(crate) struct AssertionOptions {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub(crate) struct MakeCredentialOptions {
-    timeout: Duration,
-    excluded_credentials: Vec<CredentialDescriptor>,
-    authenticator_selection: Option<AuthenticatorSelectionCriteria>,
-    attestation: Option<String>, // https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
+    pub timeout: Duration,
+    pub excluded_credentials: Vec<CredentialDescriptor>,
+    pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
+    pub attestation: Option<String>, // https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
                                  // extensions: Option<HashMap<String, Box<dyn Any>>>, don't support extensions for no
 }
 
@@ -446,24 +446,24 @@ pub(crate) struct CredentialDescriptor {
 /// https://www.w3.org/TR/webauthn-3/#dictionary-authenticatorSelection
 pub(crate) struct AuthenticatorSelectionCriteria {
     /// https://www.w3.org/TR/webauthn-3/#enum-attachment
-    authenticator_attachment: Option<String>,
+    pub authenticator_attachment: Option<String>,
 
     /// https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
-    resident_key: Option<String>,
+    pub resident_key: Option<String>,
 
     // Implied by resident_key == "required",
     // https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
     // require_resident_key: Option<bool>,
     /// https://www.w3.org/TR/webauthn-3/#enumdef-userverificationrequirement
-    user_verification: Option<String>,
+    pub user_verification: Option<String>,
 }
 
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 /// https://www.w3.org/TR/webauthn-3/#dictdef-publickeycredentialparameters
 pub(crate) struct PublicKeyCredentialParameters {
-    cred_type: String,
-    alg: i64,
+    pub cred_type: String,
+    pub alg: i64,
 }
 
 #[derive(Clone)]
