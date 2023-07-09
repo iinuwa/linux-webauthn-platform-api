@@ -4,6 +4,7 @@ pub(crate) mod store;
 use std::time::Duration;
 
 
+use openssl::{rsa::Rsa, pkey::PKey};
 use ring::{digest::digest, pkcs8::Document, rand::{SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair, RSA_PKCS1_SHA256}, digest};
 use zbus::zvariant::{DeserializeDict, Type};
 use store::{lookup_stored_credentials, store_credential};
@@ -116,7 +117,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
         id: credential_id.to_vec(),
         // privateKey
             // privateKey
-        private_key: (&key_pair.as_ref()).to_vec(),
+        private_key: key_pair.clone(),
         // rpId
             // rpEntity.id
         rp_id: rp_entity.id,
@@ -169,8 +170,8 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
     let mut attested_credential_data: Vec<u8> = Vec::new();
     attested_credential_data.append(&mut aaguid);
     let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
-    let mut cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
-    &attested_credential_data.extend(&cred_length_bytes);
+    let cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
+    attested_credential_data.extend(&cred_length_bytes);
     attested_credential_data.extend(&credential_id.clone());
     let public_key = cose_encode_public_key(&cred_pub_key_parameters, &key_pair)?;
     attested_credential_data.extend(&public_key);
@@ -244,13 +245,20 @@ extensions
 */
 }
 
-fn create_key_pair(alg: i64) -> Result<ring::pkcs8::Document, Error> {
+fn create_key_pair(alg: i64) -> Result<Vec<u8>, Error> {
     let rng = &SystemRandom::new();
     let key_pair = match alg {
-        -7 => EcdsaKeyPair::generate_pkcs8(P256, rng),
-        -8 => Ed25519KeyPair::generate_pkcs8(rng),
-        // -257 => RsaKeyPair::generate_pkcs8(rng), // TODO: Use openssl or something to generate keys, since ring doesn't support it
+        -7 => EcdsaKeyPair::generate_pkcs8(P256, rng).map(|d| d.as_ref().to_vec()),
+        -8 => Ed25519KeyPair::generate_pkcs8(rng).map(|d| d.as_ref().to_vec()),
+        -257 => {
+            let rsa_key = Rsa::generate(2048).unwrap();
+            let private_key = PKey::from_rsa(rsa_key).unwrap();
+            let pkcs8 = private_key.private_key_to_pkcs8().unwrap();
+            Ok(pkcs8.to_vec())
+        },
         _ => todo!("Unknown signature algorithm given pair generated"),
+        
+
     };
     key_pair.map_err(|_e| Error::UnknownError)
 }
@@ -297,10 +305,10 @@ fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signatur
         Ok(attestation_object)
 }
 
-fn cose_encode_public_key(parameters: &PublicKeyCredentialParameters, pkcs8_document: &Document) -> Result<Vec<u8>, Error> {
+fn cose_encode_public_key(parameters: &PublicKeyCredentialParameters, pkcs8_key: &[u8]) -> Result<Vec<u8>, Error> {
     match parameters.alg {
         -7 => {
-            let key_pair = EcdsaKeyPair::from_pkcs8(&P256, pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
+            let key_pair = EcdsaKeyPair::from_pkcs8(&P256, pkcs8_key.as_ref()).map_err(|_| Error::UnknownError)?;
             let public_key = key_pair.public_key().as_ref();
             // ring outputs public keys with uncompressed 32-byte x and y coordinates
             if public_key.len() != 65 || public_key[0] != 0x04 {
@@ -320,7 +328,7 @@ fn cose_encode_public_key(parameters: &PublicKeyCredentialParameters, pkcs8_docu
         },
         -8 => {
             // TODO: Check this
-            let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
+            let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_key.as_ref()).map_err(|_| Error::UnknownError)?;
             let public_key = key_pair.public_key().as_ref();
             let mut cose_key: Vec<u8> = Vec::new();
             cose_key.push(0b101_00100); // map with 4 items
@@ -332,7 +340,7 @@ fn cose_encode_public_key(parameters: &PublicKeyCredentialParameters, pkcs8_docu
             Ok(cose_key)
         },
         -257 => {
-            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_document.as_ref()).map_err(|_| Error::UnknownError)?;
+            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_key.as_ref()).map_err(|_| Error::UnknownError)?;
             let public_key = key_pair.public_key().as_ref();
             // TODO: This is ASN.1 with DER encoding. We could parse this to extract
             // the modulus and exponent properly, but the key length will

@@ -10,5 +10,6 @@ async-std = "1.12.0"
 base64 = "0.21.2"
 # authenticator = { path = "/home/isaiah/Development/rust/authenticator-rs" }
 oo7 = "0.1.2"
+openssl = "0.10.55"
 ring = "0.16.20"
 zbus = "3.13.1"
