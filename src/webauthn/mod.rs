@@ -300,8 +300,9 @@ fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signatur
         attestation_object.extend(b"alg");
         attestation_object.push(((algorithm + 1) as u8) | 0b001000); // TODO:
         attestation_object.push(0b011_00011); // text, length 3
-        attestation_object.extend(b"alg");
-        attestation_object.push(((algorithm + 1) as u8) | 0b001000);
+        attestation_object.extend(b"sig");
+        attestation_object.extend([0b010_11000, 0b0000_0000, 0b0000_0000]); // TODO:
+        attestation_object.extend(signature);
         Ok(attestation_object)
 }
 
