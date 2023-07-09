@@ -5,7 +5,7 @@ use std::time::Duration;
 
 
 use openssl::{rsa::Rsa, pkey::PKey};
-use ring::{digest::digest, pkcs8::Document, rand::{SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair, RSA_PKCS1_SHA256}, digest};
+use ring::{digest::digest, rand::{SystemRandom}, signature::{EcdsaSigningAlgorithm, ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair, Ed25519KeyPair, RsaKeyPair, RSA_PKCS1_SHA256}, digest};
 use zbus::zvariant::{DeserializeDict, Type};
 use store::{lookup_stored_credentials, store_credential};
 
@@ -279,7 +279,7 @@ fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
     todo!();
 }
 
-fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signature: Vec<u8>, enterprise_attestation_possible: bool) -> Result<Vec<u8>, Error> {
+fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signature: Vec<u8>, _enterprise_attestation_possible: bool) -> Result<Vec<u8>, Error> {
         let mut attestation_object = Vec::new();
         attestation_object.push(0b101_00011); // map with 3 elements
         attestation_object.push(0b011_01000); // <text, length 8>
