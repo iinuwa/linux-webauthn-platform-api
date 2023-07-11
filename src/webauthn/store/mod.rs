@@ -1,11 +1,11 @@
+use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use std::fs::{File, self};
 use std::str::FromStr;
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD, self};
+use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-use super::{CredentialSource, CredentialDescriptor, Error, RelyingParty};
+use super::{CredentialDescriptor, CredentialSource, Error, RelyingParty};
 static CRED_DIR: &'static str = "~/.local/share/webauthn/credentials";
 
 pub(crate) fn initialize() {
@@ -27,7 +27,7 @@ pub(super) async fn store_credential(credential_source: CredentialSource) -> Res
     ).await?;
     */
     let cred_id = URL_SAFE_NO_PAD.encode(credential_source.id);
-    
+
     let cred_path = PathBuf::from_str(CRED_DIR).unwrap().join(&cred_id);
     let mut cred_file = File::create(cred_path).unwrap();
     cred_file.write(b"type=public-key "); // TODO: Don't hardcode public-key?
@@ -49,6 +49,8 @@ pub(super) async fn store_credential(credential_source: CredentialSource) -> Res
     Ok(())
 }
 
-pub(super) fn lookup_stored_credentials(_id: Vec<u8>) -> Option<(CredentialDescriptor, RelyingParty)> {
+pub(super) fn lookup_stored_credentials(
+    _id: Vec<u8>,
+) -> Option<(CredentialDescriptor, RelyingParty)> {
     todo!();
 }
