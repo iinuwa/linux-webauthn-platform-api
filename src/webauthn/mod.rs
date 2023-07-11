@@ -115,8 +115,7 @@ pub(crate) async fn make_credential(
     // If requireUserVerification is true, the authorization gesture MUST include user verification.
 
     // If requireUserPresence is true, the authorization gesture MUST include a test of user presence.
-    if let Err(_) = collect_authorization_gesture(require_user_verification, require_user_presence)
-    {
+    if collect_authorization_gesture(require_user_verification, require_user_presence).is_err() {
         // If the user does not consent or if user verification fails, return an error code equivalent to "NotAllowedError" and terminate the operation.
         return Err(Error::NotAllowedError);
     }
@@ -161,7 +160,7 @@ pub(crate) async fn make_credential(
     // If any error occurred while creating the new credential object, return an error code equivalent to "UnknownError" and terminate the operation.
 
     // Let processedExtensions be the result of authenticator extension processing for each supported extension identifier → authenticator extension input in extensions.
-    let _processed_extensions = if let Some(extensions) = extensions {
+    if let Some(extensions) = extensions {
         process_authenticator_extensions(extensions)
             .expect("Extension processing not yet supported");
     };
@@ -193,19 +192,19 @@ pub(crate) async fn make_credential(
         credential_public_key: key_pair.public_key,
     };
     */
-    let mut aaguid = vec![0 as u8; 16];
+    let mut aaguid = vec![0_u8; 16];
     let mut attested_credential_data: Vec<u8> = Vec::new();
     attested_credential_data.append(&mut aaguid);
     let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
     let cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
     attested_credential_data.extend(&cred_length_bytes);
     attested_credential_data.extend(&credential_id.clone());
-    let public_key = cose_encode_public_key(&cred_pub_key_parameters, &key_pair)?;
+    let public_key = cose_encode_public_key(cred_pub_key_parameters, &key_pair)?;
     attested_credential_data.extend(&public_key);
 
     // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data, including attestedCredentialData as the attestedCredentialData and processedExtensions, if any, as the extensions.
     let mut authenticator_data: Vec<u8> = Vec::new();
-    let rp_id_hash = digest(&digest::SHA256, (&credential_source).rp_id.as_bytes());
+    let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.as_bytes());
     authenticator_data.extend(rp_id_hash.as_ref());
     authenticator_data.push(0b0100_0101); // UP, UV, AT
     authenticator_data.extend(signature_counter.to_be_bytes());
@@ -219,15 +218,15 @@ pub(crate) async fn make_credential(
     let rng = &SystemRandom::new();
     let signature = match cred_pub_key_parameters.alg {
         -7 => {
-            let ecdsa = EcdsaKeyPair::from_pkcs8(&P256, &key_pair.as_ref()).unwrap();
+            let ecdsa = EcdsaKeyPair::from_pkcs8(P256, key_pair.as_ref()).unwrap();
             ecdsa.sign(rng, &signed_data).unwrap().as_ref().to_vec()
         }
         -8 => {
-            let eddsa = Ed25519KeyPair::from_pkcs8(&key_pair.as_ref()).unwrap();
+            let eddsa = Ed25519KeyPair::from_pkcs8(key_pair.as_ref()).unwrap();
             eddsa.sign(&signed_data).as_ref().to_vec()
         }
         -257 => {
-            let rsa = RsaKeyPair::from_pkcs8(&key_pair.as_ref()).unwrap();
+            let rsa = RsaKeyPair::from_pkcs8(key_pair.as_ref()).unwrap();
             let mut signature = vec![0; rsa.public_modulus_len()];
             rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
             signature
@@ -341,8 +340,8 @@ fn cose_encode_public_key(
 ) -> Result<Vec<u8>, Error> {
     match parameters.alg {
         -7 => {
-            let key_pair = EcdsaKeyPair::from_pkcs8(&P256, pkcs8_key.as_ref())
-                .map_err(|_| Error::UnknownError)?;
+            let key_pair =
+                EcdsaKeyPair::from_pkcs8(P256, pkcs8_key).map_err(|_| Error::UnknownError)?;
             let public_key = key_pair.public_key().as_ref();
             // ring outputs public keys with uncompressed 32-byte x and y coordinates
             if public_key.len() != 65 || public_key[0] != 0x04 {
@@ -363,7 +362,7 @@ fn cose_encode_public_key(
         -8 => {
             // TODO: Check this
             let key_pair =
-                Ed25519KeyPair::from_pkcs8(pkcs8_key.as_ref()).map_err(|_| Error::UnknownError)?;
+                Ed25519KeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::UnknownError)?;
             let public_key = key_pair.public_key().as_ref();
             let mut cose_key: Vec<u8> = Vec::new();
             cose_key.push(0b101_00100); // map with 4 items
@@ -375,8 +374,7 @@ fn cose_encode_public_key(
             Ok(cose_key)
         }
         -257 => {
-            let key_pair =
-                RsaKeyPair::from_pkcs8(pkcs8_key.as_ref()).map_err(|_| Error::UnknownError)?;
+            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::UnknownError)?;
             let public_key = key_pair.public_key().as_ref();
             // TODO: This is ASN.1 with DER encoding. We could parse this to extract
             // the modulus and exponent properly, but the key length will

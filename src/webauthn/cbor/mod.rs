@@ -22,7 +22,7 @@ where
             data.as_ref().len().try_into().unwrap(),
             Some(data.as_ref()),
         )?;
-        return Ok(());
+        Ok(())
     }
 
     pub fn write_number(&mut self, num: i128) -> Result<(), Error> {
@@ -75,7 +75,7 @@ where
         self.write_cbor_value(
             MajorType::TextString,
             data.len().try_into().unwrap(),
-            Some(&data),
+            Some(data),
         )?;
         Ok(())
     }
@@ -186,7 +186,7 @@ mod tests {
     fn write_uint() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
         let mut cbor_writer = CborWriter::new(&mut buf);
-        cbor_writer.write_number(22 as i128).unwrap();
+        cbor_writer.write_number(22_i128).unwrap();
         assert_eq!(buf, &[0b000_10110]);
     }
 
@@ -194,7 +194,7 @@ mod tests {
     fn write_number_u8() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
         let mut cbor_writer = CborWriter::new(&mut buf);
-        cbor_writer.write_number(500 as i128).unwrap();
+        cbor_writer.write_number(500_i128).unwrap();
         assert_eq!(buf, &[0b000_11001, 0x01, 0xf4]);
     }
 
@@ -202,7 +202,7 @@ mod tests {
     fn write_negative_number() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
         let mut cbor_writer = CborWriter::new(&mut buf);
-        cbor_writer.write_number(-22 as i128).unwrap();
+        cbor_writer.write_number((-22_i128)).unwrap();
         assert_eq!(buf, &[0b001_10101]);
     }
 
@@ -210,7 +210,7 @@ mod tests {
     fn write_negative_number_u8() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
         let mut cbor_writer = CborWriter::new(&mut buf);
-        cbor_writer.write_number(-500 as i128).unwrap();
+        cbor_writer.write_number((-500_i128)).unwrap();
         assert_eq!(buf, &[0b001_11001, 0x01, 0xf3]);
     }
 

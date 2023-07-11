@@ -6,7 +6,7 @@ use std::str::FromStr;
 use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
 use super::{CredentialDescriptor, CredentialSource, Error, RelyingParty};
-static CRED_DIR: &'static str = "~/.local/share/webauthn/credentials";
+static CRED_DIR: &str = "~/.local/share/webauthn/credentials";
 
 pub(crate) fn initialize() {
     fs::create_dir_all(PathBuf::from_str(CRED_DIR).unwrap());
