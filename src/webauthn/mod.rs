@@ -9,6 +9,8 @@ use ring::{digest::digest, rand::{SystemRandom}, signature::{EcdsaSigningAlgorit
 use zbus::zvariant::{DeserializeDict, Type};
 use store::{lookup_stored_credentials, store_credential};
 
+use self::cbor::CborWriter;
+
 static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
 // static RNG: &Box<dyn SecureRandom> = &Box::new(SystemRandom::new());
 
@@ -26,10 +28,10 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
 
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO: 
-    let supported_algorithms: [i64; 2] = [
+    let supported_algorithms: [i64; 3] = [
         -8, // Ed25519
         -7, // P-256
-        // -257 // RSA-PKCS1-SHA256, TODO: key generation not supported right now
+        -257 // RSA-PKCS1-SHA256
     ];
     
     // When this operation is invoked, the authenticator MUST perform the following procedure:
@@ -208,7 +210,7 @@ pub(crate) async fn make_credential(client_data_hash: Vec<u8>, rp_entity: Relyin
             return Err(Error::NotSupportedError)
         }
     };
-    let attestation_object = create_attestation_object(cred_pub_key_parameters.alg, &authenticator_data, signature, enterprise_attestation_possible)?;
+    let attestation_object = create_attestation_object(cred_pub_key_parameters.alg, &authenticator_data, &signature, enterprise_attestation_possible)?;
 
     // On successful completion of this operation, the authenticator returns the attestation object to the client.
     Ok(attestation_object)
@@ -279,31 +281,24 @@ fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
     todo!();
 }
 
-fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signature: Vec<u8>, _enterprise_attestation_possible: bool) -> Result<Vec<u8>, Error> {
-        let mut attestation_object = Vec::new();
-        attestation_object.push(0b101_00011); // map with 3 elements
-        attestation_object.push(0b011_01000); // <text, length 8>
-        attestation_object.extend(b"authData");
-        attestation_object.push(0b010_01000); // <bytes, length 8>
-        attestation_object.push(0b011_00011); // <text, length 3>
-        attestation_object.extend(b"fmt");
-        attestation_object.push(0b011_00110); // <text, length 6>
-        attestation_object.extend(b"packed");
-        attestation_object.push(0b011_00111); // <text, length 7>
-        attestation_object.extend(b"attStmt");
-        attestation_object.push(0b101_00010); // map, length 2
-        attestation_object.push(0b011_00100); // text, length 4
-        attestation_object.extend(b"authData");
-        attestation_object.push (0b011_00000); // bytes, length authenticator_data.len() // todo:
-        attestation_object.extend(authenticator_data);
-        attestation_object.push(0b011_00011); // text, length 3
-        attestation_object.extend(b"alg");
-        attestation_object.push(((algorithm + 1) as u8) | 0b001000); // TODO:
-        attestation_object.push(0b011_00011); // text, length 3
-        attestation_object.extend(b"sig");
-        attestation_object.extend([0b010_11000, 0b0000_0000, 0b0000_0000]); // TODO:
-        attestation_object.extend(signature);
-        Ok(attestation_object)
+fn create_attestation_object(algorithm: i64, authenticator_data: &[u8], signature: &[u8], _enterprise_attestation_possible: bool) -> Result<Vec<u8>, Error> {
+    let mut attestation_object = Vec::new();
+    let mut cbor_writer = CborWriter::new(&mut attestation_object);
+    cbor_writer.write_map_start(3);
+
+    cbor_writer.write_text("authData");
+    cbor_writer.write_bytes(authenticator_data);
+
+    cbor_writer.write_text("fmt");
+    cbor_writer.write_text("packed");
+
+    cbor_writer.write_text("attStmt");
+    cbor_writer.write_map_start(2);
+    cbor_writer.write_text("alg");
+    cbor_writer.write_number(algorithm.into());
+    cbor_writer.write_text("sig");
+    cbor_writer.write_bytes(signature);
+    Ok(attestation_object)
 }
 
 fn cose_encode_public_key(parameters: &PublicKeyCredentialParameters, pkcs8_key: &[u8]) -> Result<Vec<u8>, Error> {

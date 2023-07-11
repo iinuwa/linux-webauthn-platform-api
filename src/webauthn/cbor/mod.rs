@@ -13,43 +13,8 @@ where W: Write {
 
     pub fn write_bytes<T>(&mut self, data: T) -> Result<(), Error>
     where T: AsRef<[u8]> {
-        self.write_cbor_value(MajorType::ByteString, data.as_ref())?;
+        self.write_cbor_value(MajorType::ByteString, data.as_ref().len().try_into().unwrap(), Some(data.as_ref()))?;
         return Ok(());
-        const MAJOR_TYPE_MASK: u8 = 0b010_00000;
-        let d = data.as_ref();
-        let len: u64 = d.len().try_into().unwrap();
-        let mut major_type_buf = vec![0; 17];
-        if len < 24 {
-            let l: u8 = len.try_into().unwrap();
-            self.writer.write_all(&[l | MAJOR_TYPE_MASK])?;
-        }
-        else if len < 2u64.pow(8) {
-            let l: u8 = len.try_into().unwrap();
-            major_type_buf[0] = 24u8 | MAJOR_TYPE_MASK;
-            major_type_buf[1..2].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
-        } else if len < 2u64.pow(16) {
-            let l: u16 = len.try_into().unwrap();
-            major_type_buf[0] = 24u8 | MAJOR_TYPE_MASK;
-            major_type_buf[1..4].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
-        } else if len < 2u64.pow(32) {
-            let l: u32 = len.try_into().unwrap();
-            major_type_buf[0] = 24u8 | MAJOR_TYPE_MASK;
-            major_type_buf[1..8].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
-        } else if len < 2u64.pow(64) {
-            let l: u64 = len.try_into().unwrap();
-            major_type_buf[0] = 24u8 | MAJOR_TYPE_MASK;
-            major_type_buf[1..16].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
-        }
-        else {
-            return Err(Error::new(std::io::ErrorKind::Unsupported, "Value too large".to_string()));
-        }
-        self.writer.write(data.as_ref())?;
-        Ok(())
-
     }
 
     pub fn write_number(&mut self, num: i128) -> Result<(), Error> {
@@ -87,11 +52,18 @@ where W: Write {
         }
     }
 
-    pub fn write_map_start(len: usize) {
-        write_cbor_value(MajorType::Map, )
+    pub fn write_map_start(&mut self, len: usize) -> Result<(), Error>{
+        self.write_cbor_value(MajorType::Map, len as u64, None)?;
+        Ok(())
     }
 
-    fn write_cbor_value(&mut self, major_type: MajorType, len: u64, data: &[u8]) -> Result<(), Error> {
+    pub fn write_text(&mut self, text: &str) -> Result<(), Error> {
+        let data = text.as_bytes();
+        self.write_cbor_value(MajorType::TextString, data.len().try_into().unwrap(), Some(&data))?;
+        Ok(())
+    }
+
+    fn write_cbor_value(&mut self, major_type: MajorType, len: u64, data: Option<&[u8]>) -> Result<(), Error> {
         let major_type_mask = match major_type {
             MajorType::PositiveInteger => 0b000_00000,
             MajorType::NegativeInteger => 0b001_00000,
@@ -103,11 +75,7 @@ where W: Write {
             MajorType::Float => 0b111_00000,
         };
 
-        let d = data.as_ref();
-        // let len: u64 = d.len().try_into().unwrap();
-        let mut major_type_buf = vec![0; 17];
-        if len
-        if len > 0
+        let mut major_type_buf = vec![0; 9];
         if len < 24 {
             let l: u8 = len.try_into().unwrap();
             self.writer.write_all(&[l | major_type_mask])?;
@@ -116,27 +84,29 @@ where W: Write {
             let l: u8 = len.try_into().unwrap();
             major_type_buf[0] = 24u8 | major_type_mask;
             major_type_buf[1..2].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
+            self.writer.write_all(&major_type_buf[0..2])?;
         } else if len < 2u64.pow(16) {
             let l: u16 = len.try_into().unwrap();
-            major_type_buf[0] = 0b10101010; // 25u8 | major_type_mask;
-            major_type_buf[1..4].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
+            major_type_buf[0] = 25u8 | major_type_mask;
+            major_type_buf[1..3].copy_from_slice(&l.to_be_bytes());
+            self.writer.write_all(&major_type_buf[0..3])?;
         } else if len < 2u64.pow(32) {
             let l: u32 = len.try_into().unwrap();
             major_type_buf[0] = 26u8 | major_type_mask;
-            major_type_buf[1..8].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
+            major_type_buf[1..5].copy_from_slice(&l.to_be_bytes());
+            self.writer.write_all(&major_type_buf[0..5])?;
         } else if len < 2u64.pow(64) {
             let l: u64 = len.try_into().unwrap();
             major_type_buf[0] = 27u8 | major_type_mask;
-            major_type_buf[1..16].copy_from_slice(&l.to_be_bytes());
-            self.writer.write_all(&major_type_buf)?;
+            major_type_buf[1..9].copy_from_slice(&l.to_be_bytes());
+            self.writer.write_all(&major_type_buf[0..9])?;
         }
         else {
             return Err(Error::new(std::io::ErrorKind::Unsupported, "Value too large".to_string()));
         }
-        self.writer.write(data.as_ref())?;
+        if let Some(data) = data {
+            self.writer.write(data)?;
+        }
         Ok(())
 
     }
@@ -161,7 +131,6 @@ mod tests {
     #[test]
     fn write_bytes() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
-        // let b: &mut [u8] = buf.as_mut();
         let mut cbor_writer = CborWriter::new(&mut buf);
         let data: &[u8] = &[0x01, 0x23, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xff];
         cbor_writer.write_bytes(data).unwrap();
@@ -171,9 +140,7 @@ mod tests {
     #[test]
     fn write_bytes_over24() {
         let mut buf: Vec<u8> = Vec::new();
-        // let b: &mut [u8] = buf.as_mut();
         let mut cbor_writer = CborWriter::new(&mut buf);
-        // let data: &[u8] = &[0x00, 0x, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xff];
         let data = vec![0; 32];
         cbor_writer.write_bytes(data.clone()).unwrap();
         assert_eq!(&buf[0..2], &[0b010_11000, 32u8]);
@@ -183,7 +150,6 @@ mod tests {
     #[test]
     fn write_uint() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
-        // let b: &mut [u8] = buf.as_mut();
         let mut cbor_writer = CborWriter::new(&mut buf);
         cbor_writer.write_number(22 as i128).unwrap();
         assert_eq!(buf, &[0b000_10110]);
@@ -192,9 +158,32 @@ mod tests {
     #[test]
     fn write_number_u8() {
         let mut buf: Vec<u8> = Vec::with_capacity(16);
-        // let b: &mut [u8] = buf.as_mut();
         let mut cbor_writer = CborWriter::new(&mut buf);
         cbor_writer.write_number(500 as i128).unwrap();
         assert_eq!(buf, &[0b000_11001, 0x01, 0xf4]);
+    }
+
+    #[test]
+    fn write_negative_number() {
+        let mut buf: Vec<u8> = Vec::with_capacity(16);
+        let mut cbor_writer = CborWriter::new(&mut buf);
+        cbor_writer.write_number(-22 as i128).unwrap();
+        assert_eq!(buf, &[0b001_10101]);
+    }
+
+    #[test]
+    fn write_negative_number_u8() {
+        let mut buf: Vec<u8> = Vec::with_capacity(16);
+        let mut cbor_writer = CborWriter::new(&mut buf);
+        cbor_writer.write_number(-500 as i128).unwrap();
+        assert_eq!(buf, &[0b001_11001, 0x01, 0xf3]);
+    }
+
+    #[test]
+    fn write_map_start() {
+        let mut buf: Vec<u8> = Vec::with_capacity(3);
+        let mut cbor_writer = CborWriter::new(&mut buf);
+        cbor_writer.write_map_start(800).unwrap();
+        assert_eq!(buf, &[0b101_11001, 0b0000_0011, 0b0010_0000, ]);
     }
 }
