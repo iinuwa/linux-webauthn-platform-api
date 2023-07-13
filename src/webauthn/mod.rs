@@ -10,7 +10,7 @@ use ring::{
     rand::SystemRandom,
     signature::{
         EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, KeyPair, RsaKeyPair,
-        ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256,
+        ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256, EcdsaVerificationAlgorithm, ECDSA_P256_SHA256_ASN1, self, VerificationAlgorithm,
     },
 };
 use store::{lookup_stored_credentials, store_credential};
@@ -186,12 +186,6 @@ pub(crate) async fn make_credential(
     };
 
     // Let attestedCredentialData be the attested credential data byte array including the credentialId and publicKey.
-    /*
-    let attested_credential_data = AttestedCredentialData {
-        credential_id,
-        credential_public_key: key_pair.public_key,
-    };
-    */
     let aaguid = vec![0_u8; 16];
     let public_key = cose_encode_public_key(cred_pub_key_parameters, &key_pair)?;
     let attested_credential_data = create_attested_credential_data(&credential_id, &public_key, &aaguid)?;
@@ -211,36 +205,6 @@ pub(crate) async fn make_credential(
 
     // On successful completion of this operation, the authenticator returns the attestation object to the client.
     Ok(attestation_object)
-
-    /*
-        The hash of the serialized client data, provided by the client.
-    rpEntity
-
-        The Relying Party's PublicKeyCredentialRpEntity.
-    userEntity
-
-        The user account’s PublicKeyCredentialUserEntity, containing the user handle given by the Relying Party.
-    requireResidentKey
-
-        The effective resident key requirement for credential creation, a Boolean value determined by the client.
-    requireUserPresence
-
-        The constant Boolean value true. It is included here as a pseudo-parameter to simplify applying this abstract authenticator model to implementations that may wish to make a test of user presence optional although WebAuthn does not.
-    requireUserVerification
-
-        The effective user verification requirement for credential creation, a Boolean value determined by the client.
-    credTypesAndPubKeyAlgs
-
-        A sequence of pairs of PublicKeyCredentialType and public key algorithms (COSEAlgorithmIdentifier) requested by the Relying Party. This sequence is ordered from most preferred to least preferred. The authenticator makes a best-effort to create the most preferred credential that it can.
-    excludeCredentialDescriptorList
-
-        An OPTIONAL list of PublicKeyCredentialDescriptor objects provided by the Relying Party with the intention that, if any of these are known to the authenticator, it SHOULD NOT create a new credential. excludeCredentialDescriptorList contains a list of known credentials.
-    enterpriseAttestationPossible
-
-        A Boolean value that indicates that individually-identifying attestation MAY be returned by the authenticator.
-    extensions
-        A CBOR map from extension identifiers to their authenticator extension inputs, created by the client based on the extensions requested by the Relying Party, if any.
-    */
 }
 
 fn create_key_pair(alg: i64) -> Result<Vec<u8>, Error> {
@@ -354,8 +318,7 @@ fn cose_encode_public_key(
 ) -> Result<Vec<u8>, Error> {
     match parameters.alg {
         -7 => {
-            let key_pair =
-                EcdsaKeyPair::from_pkcs8(P256, pkcs8_key).map_err(|_| Error::UnknownError)?;
+            let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8_key).unwrap();
             let public_key = key_pair.public_key().as_ref();
             // ring outputs public keys with uncompressed 32-byte x and y coordinates
             if public_key.len() != 65 || public_key[0] != 0x04 {
@@ -437,10 +400,10 @@ mod test {
 
     #[test]
     fn test_attestation() {
-        let key_file = std::fs::read("private-key1.pem").unwrap();
+        let key_file = std::fs::read("private-key1.pk8").unwrap();
         let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
         let key_parameters = PublicKeyCredentialParameters { alg: -7, cred_type: "public-key".to_string() };
-        let public_key = cose_encode_public_key(&key_parameters, key_pair.public_key().as_ref()).unwrap();
+        let public_key = cose_encode_public_key(&key_parameters, &key_file).unwrap();
         let signature_counter = 1u32;
         let credential_id = [
             0x92, 0x11, 0xb7, 0x6d, 0x8b, 0x19, 0xf9, 0x50, 0x6c, 0x2d, 0x75, 0x2f, 0x09, 0xc4, 0x3c, 0x5a,
