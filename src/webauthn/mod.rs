@@ -65,7 +65,7 @@ pub(crate) async fn make_credential(
     // Check if at least one of the specified combinations of PublicKeyCredentialType and cryptographic parameters in credTypesAndPubKeyAlgs is supported. If not, return an error code equivalent to "NotSupportedError" and terminate the operation.
     let cred_pub_key_parameters = match cred_pub_key_algs
         .iter()
-        .find(|p| p.cred_type == "public-key" && supported_algorithms.contains(&p.alg))
+        .find(|p| p.r#type == "public-key" && supported_algorithms.contains(&p.alg))
     {
         Some(cred_pub_key_parameters) => cred_pub_key_parameters,
         None => return Err(Error::NotSupportedError),
@@ -402,7 +402,7 @@ mod test {
     fn test_attestation() {
         let key_file = std::fs::read("private-key1.pk8").unwrap();
         let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
-        let key_parameters = PublicKeyCredentialParameters { alg: -7, cred_type: "public-key".to_string() };
+        let key_parameters = PublicKeyCredentialParameters { alg: -7, r#type: "public-key".to_string() };
         let public_key = cose_encode_public_key(&key_parameters, &key_file).unwrap();
         let signature_counter = 1u32;
         let credential_id = [
@@ -433,13 +433,15 @@ mod test {
 
 }
 #[derive(DeserializeDict, Type)]
+#[zvariant(signature = "dict")]
 pub(crate) struct RelyingParty {
     name: String,
     id: String,
 }
 
-#[derive(DeserializeDict, Type)]
 /// https://www.w3.org/TR/webauthn-3/#dictionary-user-credential-params
+#[derive(DeserializeDict, Type)]
+#[zvariant(signature = "dict")]
 pub(crate) struct User {
     id: Vec<u8>,
     name: String,
@@ -520,7 +522,7 @@ pub(crate) struct AuthenticatorSelectionCriteria {
 #[zvariant(signature = "dict")]
 /// https://www.w3.org/TR/webauthn-3/#dictdef-publickeycredentialparameters
 pub(crate) struct PublicKeyCredentialParameters {
-    pub cred_type: String,
+    pub r#type: String,
     pub alg: i64,
 }
 
