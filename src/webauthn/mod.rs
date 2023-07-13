@@ -3,10 +3,10 @@ pub(crate) mod store;
 
 use std::time::Duration;
 
+use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use openssl::{pkey::PKey, rsa::Rsa};
 use ring::{
-    digest,
-    digest::digest,
+    digest::{self, digest, SHA256},
     rand::SystemRandom,
     signature::{
         EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, KeyPair, RsaKeyPair,
@@ -192,47 +192,16 @@ pub(crate) async fn make_credential(
         credential_public_key: key_pair.public_key,
     };
     */
-    let mut aaguid = vec![0_u8; 16];
-    let mut attested_credential_data: Vec<u8> = Vec::new();
-    attested_credential_data.append(&mut aaguid);
-    let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
-    let cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
-    attested_credential_data.extend(&cred_length_bytes);
-    attested_credential_data.extend(&credential_id.clone());
+    let aaguid = vec![0_u8; 16];
     let public_key = cose_encode_public_key(cred_pub_key_parameters, &key_pair)?;
-    attested_credential_data.extend(&public_key);
+    let attested_credential_data = create_attested_credential_data(&credential_id, &public_key, &aaguid)?;
 
     // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data, including attestedCredentialData as the attestedCredentialData and processedExtensions, if any, as the extensions.
-    let mut authenticator_data: Vec<u8> = Vec::new();
-    let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.as_bytes());
-    authenticator_data.extend(rp_id_hash.as_ref());
-    authenticator_data.push(0b0100_0101); // UP, UV, AT
-    authenticator_data.extend(signature_counter.to_be_bytes());
-    authenticator_data.extend(&attested_credential_data);
-    // TODO: authenticator_data.append(processed_extensions.to_bytes());
+    let authenticator_data = create_authenticator_data(&credential_source, signature_counter, &attested_credential_data);
 
     // Create an attestation object for the new credential using the procedure specified in § 6.5.4 Generating an Attestation Object, using an authenticator-chosen attestation statement format, authenticatorData, and hash, as well as taking into account the value of enterpriseAttestationPossible. For more details on attestation, see § 6.5 Attestation.
     // TODO: attestation not supported for now
-    let signed_data: Vec<u8> =
-        [authenticator_data.as_slice(), client_data_hash.as_slice()].concat();
-    let rng = &SystemRandom::new();
-    let signature = match cred_pub_key_parameters.alg {
-        -7 => {
-            let ecdsa = EcdsaKeyPair::from_pkcs8(P256, key_pair.as_ref()).unwrap();
-            ecdsa.sign(rng, &signed_data).unwrap().as_ref().to_vec()
-        }
-        -8 => {
-            let eddsa = Ed25519KeyPair::from_pkcs8(key_pair.as_ref()).unwrap();
-            eddsa.sign(&signed_data).as_ref().to_vec()
-        }
-        -257 => {
-            let rsa = RsaKeyPair::from_pkcs8(key_pair.as_ref()).unwrap();
-            let mut signature = vec![0; rsa.public_modulus_len()];
-            rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
-            signature
-        }
-        _ => return Err(Error::NotSupportedError),
-    };
+    let signature = sign_attestation(&authenticator_data, &client_data_hash, &key_pair, cred_pub_key_parameters)?;
     let attestation_object = create_attestation_object(
         cred_pub_key_parameters.alg,
         &authenticator_data,
@@ -309,6 +278,50 @@ fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
     todo!();
 }
 
+fn sign_attestation(authenticator_data: &[u8], client_data_hash: &[u8], key_pair: &[u8], cred_pub_key_parameters: &PublicKeyCredentialParameters) -> Result<Vec<u8>, Error> {
+    let signed_data: Vec<u8> = [authenticator_data, client_data_hash].concat();
+    let rng = &SystemRandom::new();
+    match cred_pub_key_parameters.alg {
+        -7 => {
+            let ecdsa = EcdsaKeyPair::from_pkcs8(P256, key_pair).unwrap();
+            Ok(ecdsa.sign(rng, &signed_data).unwrap().as_ref().to_vec())
+        }
+        -8 => {
+            let eddsa = Ed25519KeyPair::from_pkcs8(key_pair).unwrap();
+            Ok(eddsa.sign(&signed_data).as_ref().to_vec())
+        }
+        -257 => {
+            let rsa = RsaKeyPair::from_pkcs8(key_pair).unwrap();
+            let mut signature = vec![0; rsa.public_modulus_len()];
+            rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
+            Ok(signature)
+        }
+        _ => Err(Error::NotSupportedError),
+    }
+}
+
+fn create_attested_credential_data(credential_id: &[u8], public_key: &[u8], aaguid: &[u8]) -> Result<Vec<u8>, Error> {
+    let mut attested_credential_data: Vec<u8> = Vec::new();
+    if aaguid.len() != 16 { return Err(Error::UnknownError); }
+    attested_credential_data.extend(aaguid);
+    let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
+    let cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
+    attested_credential_data.extend(&cred_length_bytes);
+    attested_credential_data.extend(credential_id);
+    attested_credential_data.extend(public_key);
+    Ok(attested_credential_data)
+
+}
+fn create_authenticator_data(credential_source: &CredentialSource, signature_counter: u32, attested_credential_data: &[u8]) -> Vec<u8> {
+    let mut authenticator_data: Vec<u8> = Vec::new();
+    let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.as_bytes());
+    authenticator_data.extend(rp_id_hash.as_ref());
+    authenticator_data.push(0b0100_0101); // UP, UV, AT
+    authenticator_data.extend(signature_counter.to_be_bytes());
+    authenticator_data.extend(attested_credential_data);
+    // TODO: authenticator_data.append(processed_extensions.to_bytes());
+    authenticator_data
+}
 fn create_attestation_object(
     algorithm: i64,
     authenticator_data: &[u8],
@@ -319,9 +332,6 @@ fn create_attestation_object(
     let mut cbor_writer = CborWriter::new(&mut attestation_object);
     cbor_writer.write_map_start(3);
 
-    cbor_writer.write_text("authData");
-    cbor_writer.write_bytes(authenticator_data);
-
     cbor_writer.write_text("fmt");
     cbor_writer.write_text("packed");
 
@@ -331,6 +341,10 @@ fn create_attestation_object(
     cbor_writer.write_number(algorithm.into());
     cbor_writer.write_text("sig");
     cbor_writer.write_bytes(signature);
+
+    cbor_writer.write_text("authData");
+    cbor_writer.write_bytes(authenticator_data);
+
     Ok(attestation_object)
 }
 
@@ -397,15 +411,63 @@ fn cose_encode_public_key(
     }
 }
 
-#[test]
-fn test_rsa_key_pair() {
-    let f = std::fs::read("rsa-2048-private-key.pk8").unwrap();
-    let key_pair = RsaKeyPair::from_pkcs8(&f).unwrap();
-    // println!(key_pair.public_key().as_ref().iter().map(|b| format!("{b:2x}").to_string()).collect::<Vec<String>>().join(""));
-    for b in key_pair.public_key().as_ref().to_vec() {
-        print!("{b:02x}");
+#[cfg(test)]
+mod test {
+    use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use ring::{
+        digest::{digest, SHA256},
+        signature::{
+            EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, KeyPair, RsaKeyPair,
+            ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256,
+        },
+    };
+
+    use super::{cose_encode_public_key, create_attestation_object, create_attested_credential_data, create_authenticator_data, CredentialSource, PublicKeyCredentialType, PublicKeyCredentialParameters, P256, sign_attestation};
+
+    #[test]
+    fn test_rsa_key_pair() {
+        let f = std::fs::read("rsa-2048-private-key.pk8").unwrap();
+        let key_pair = RsaKeyPair::from_pkcs8(&f).unwrap();
+        // println!(key_pair.public_key().as_ref().iter().map(|b| format!("{b:2x}").to_string()).collect::<Vec<String>>().join(""));
+        for b in key_pair.public_key().as_ref().to_vec() {
+            print!("{b:02x}");
+        }
+        println!();
     }
-    println!();
+
+    #[test]
+    fn test_attestation() {
+        let key_file = std::fs::read("private-key1.pem").unwrap();
+        let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
+        let key_parameters = PublicKeyCredentialParameters { alg: -7, cred_type: "public-key".to_string() };
+        let public_key = cose_encode_public_key(&key_parameters, key_pair.public_key().as_ref()).unwrap();
+        let signature_counter = 1u32;
+        let credential_id = [
+            0x92, 0x11, 0xb7, 0x6d, 0x8b, 0x19, 0xf9, 0x50, 0x6c, 0x2d, 0x75, 0x2f, 0x09, 0xc4, 0x3c, 0x5a,
+            0xeb, 0xf3, 0x36, 0xf6, 0xba, 0x89, 0x66, 0xdc, 0x6e, 0x71, 0x93, 0x52, 0x08, 0x72, 0x1d, 0x16
+        ].to_vec();
+        let aaguid = [01, 02, 03, 04, 05, 06, 07, 08, 01, 02, 03, 04, 05, 06, 07, 08,];
+        let attested_credential_data = create_attested_credential_data(&credential_id, &public_key, &aaguid).unwrap();
+        let user_handle = [0x64, 0x47, 0x56, 0x7a, 0x64, 0x47, 0x46, 0x69, 0x65, 0x6e, 0x6f,].to_vec();
+        let credential_source = CredentialSource {
+            cred_type: PublicKeyCredentialType::PublicKey,
+            id: credential_id,
+            private_key: key_file.clone(),
+            rp_id: "webauthn.io".to_string(),
+            user_handle: Some(user_handle),
+            other_ui: None,
+        };
+
+        let authenticator_data = create_authenticator_data(&credential_source, signature_counter, &attested_credential_data);
+        let client_data_encoded = "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWWlReFY0VWhjZk9pUmZBdkF4bWpEakdhaUVXbkYtZ0ZFcWxndmdEaWsyakZiSGhoaVlxUGJqc0F5Q0FrbDlMUGQwRGRQaHNNb2luY0cxckV5cFlXUVEiLCJvcmlnaW4iOiJodHRwczovL3dlYmF1dGhuLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ";
+        let client_data = URL_SAFE_NO_PAD.decode(client_data_encoded).unwrap();
+        let client_data_hash = digest(&SHA256, &client_data).as_ref().to_vec();
+        let signature = sign_attestation(&authenticator_data, &client_data_hash, &key_file, &key_parameters).unwrap();
+        let attestation_object = create_attestation_object(key_parameters.alg, &authenticator_data, &signature, false).unwrap();
+        let expected = std::fs::read("output.bin").unwrap();
+        assert_eq!(expected, attestation_object);
+    }
+
 }
 #[derive(DeserializeDict, Type)]
 pub(crate) struct RelyingParty {
