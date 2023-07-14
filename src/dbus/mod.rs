@@ -53,6 +53,7 @@ impl CredentialManager {
         let enterprise_attestation_possible = false;
         let client_data_hash = digest(&SHA256, client_data.as_bytes()).as_ref().to_vec();
         let extensions = None;
+        let excluded_credentials = options.excluded_credentials.unwrap_or(Vec::new());
         webauthn::make_credential(
             client_data_hash,
             rp,
@@ -61,7 +62,7 @@ impl CredentialManager {
             require_user_presence,
             require_user_verification,
             credential_parameters,
-            options.excluded_credentials,
+            excluded_credentials,
             enterprise_attestation_possible,
             extensions,
         )

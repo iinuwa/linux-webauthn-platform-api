@@ -65,7 +65,7 @@ pub(crate) async fn make_credential(
     // Check if at least one of the specified combinations of PublicKeyCredentialType and cryptographic parameters in credTypesAndPubKeyAlgs is supported. If not, return an error code equivalent to "NotSupportedError" and terminate the operation.
     let cred_pub_key_parameters = match cred_pub_key_algs
         .iter()
-        .find(|p| p.r#type == "public-key" && supported_algorithms.contains(&p.alg))
+        .find(|p| p.cred_type == "public-key" && supported_algorithms.contains(&p.alg))
     {
         Some(cred_pub_key_parameters) => cred_pub_key_parameters,
         None => return Err(Error::NotSupportedError),
@@ -235,7 +235,8 @@ fn collect_authorization_gesture(
     _require_user_presence: bool,
     _require_user_verification: bool,
 ) -> Result<(), Error> {
-    todo!();
+    // todo!();
+    Ok(())
 }
 
 fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
@@ -402,7 +403,7 @@ mod test {
     fn test_attestation() {
         let key_file = std::fs::read("private-key1.pk8").unwrap();
         let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
-        let key_parameters = PublicKeyCredentialParameters { alg: -7, r#type: "public-key".to_string() };
+        let key_parameters = PublicKeyCredentialParameters { alg: -7, cred_type: "public-key".to_string() };
         let public_key = cose_encode_public_key(&key_parameters, &key_file).unwrap();
         let signature_counter = 1u32;
         let credential_id = [
@@ -477,8 +478,8 @@ pub(crate) struct AssertionOptions {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub(crate) struct MakeCredentialOptions {
-    pub timeout: Duration,
-    pub excluded_credentials: Vec<CredentialDescriptor>,
+    pub timeout: Option<Duration>,
+    pub excluded_credentials: Option<Vec<CredentialDescriptor>>,
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
     pub attestation: Option<String>, // https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
                                      // extensions: Option<HashMap<String, Box<dyn Any>>>, don't support extensions for no
@@ -522,7 +523,8 @@ pub(crate) struct AuthenticatorSelectionCriteria {
 #[zvariant(signature = "dict")]
 /// https://www.w3.org/TR/webauthn-3/#dictdef-publickeycredentialparameters
 pub(crate) struct PublicKeyCredentialParameters {
-    pub r#type: String,
+    #[zvariant(rename = "type")]
+    pub cred_type: String,
     pub alg: i64,
 }
 

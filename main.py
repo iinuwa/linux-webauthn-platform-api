@@ -21,24 +21,25 @@ async def run():
         'xyz.iinuwa.credentials.CredentialManager1')
 
     rp = {
-        "name": "example.com",
-        "id": "example.com",
+        "name": Variant('s', "example.com"),
+        "id": Variant('s', "example.com"),
     }
     user = {
-        "id": b"123abdsacddw",
-        "name": "user@example.com",
-        "display_name": "User 1",
+        "id": Variant('ay', b"123abdsacddw"),
+        "name": Variant('s', "user@example.com"),
+        "display_name": Variant('s', "User 1"),
     }
     cred_params = [
-        {"type": "public-key", "alg": -7},
-        {"type": "public-key", "alg": -257},
-        {"type": "public-key", "alg": -8},
+        {"type": Variant('s', "public-key"), "alg": Variant('x', -7)},
+        {"type": Variant('s', "public-key"), "alg": Variant('x', -257)},
+        {"type": Variant('s', "public-key"), "alg": Variant('x', -8)},
     ]
-    client_data = json.puts({
+    client_data = json.dumps({
         "type": "webauthn.create",
-        "challenge": base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip('='),
+        "challenge": base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b'=').decode('ascii'),
         "origin": "https://example.com",
     })
+    options = {}
     rsp = await interface.call_make_credential(rp, user, cred_params, client_data, options)
     print(rsp)
     await bus.wait_for_disconnect()
