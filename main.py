@@ -36,13 +36,15 @@ async def run():
     ]
     client_data = json.dumps({
         "type": "webauthn.create",
-        "challenge": base64.urlsafe_b64encode(secrets.token_bytes(16)).rstrip(b'=').decode('ascii'),
+        "challenge": base64.urlsafe_b64encode(secrets.token_bytes(16))
+                           .rstrip(b'=').decode('ascii'),
         "origin": "https://example.com",
     })
     options = {}
-    rsp = await interface.call_make_credential(rp, user, cred_params, client_data, options)
+    rsp = await interface.call_make_credential(
+        rp, user, cred_params, client_data, options)
     print(rsp)
-    await bus.wait_for_disconnect()
+    # await bus.wait_for_disconnect()
 
 
 def main():

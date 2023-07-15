@@ -478,11 +478,13 @@ pub(crate) struct AssertionOptions {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub(crate) struct MakeCredentialOptions {
+    /// Timeout in milliseconds
     pub timeout: Option<Duration>,
     pub excluded_credentials: Option<Vec<CredentialDescriptor>>,
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
-    pub attestation: Option<String>, // https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
-                                     // extensions: Option<HashMap<String, Box<dyn Any>>>, don't support extensions for no
+    /// https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
+    pub attestation: Option<String>, 
+    // extensions: Option<HashMap<String, Box<dyn Any>>>, don't support extensions for now
 }
 
 pub(crate) struct CredentialList(Vec<CredentialDescriptor>);
@@ -511,6 +513,9 @@ pub(crate) struct AuthenticatorSelectionCriteria {
 
     /// https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
     pub resident_key: Option<String>,
+
+    /// https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
+    pub require_resident_key: Option<bool>,
 
     // Implied by resident_key == "required",
     // https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement

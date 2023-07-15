@@ -33,7 +33,7 @@ impl CredentialManager {
         let (require_resident_key, require_user_verification) =
             if let Some(authenticator_selection) = options.authenticator_selection {
                 let is_authenticator_storage_capable = true;
-                let require_resident_key = authenticator_selection.resident_key.map_or_else(
+                let require_resident_key = authenticator_selection.require_resident_key.map_or_else(
                     || false,
                     |r| r == "required" || (r == "preferred" && is_authenticator_storage_capable),
                 ); // fallback to authenticator_selection.require_resident_key == true for WebAuthn Level 1?
