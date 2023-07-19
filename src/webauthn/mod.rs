@@ -484,7 +484,8 @@ pub(crate) struct MakeCredentialOptions {
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
     /// https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
     pub attestation: Option<String>, 
-    // extensions: Option<HashMap<String, Box<dyn Any>>>, don't support extensions for now
+    /// extensions input as a JSON object
+    pub extension_data: Option<String>,
 }
 
 pub(crate) struct CredentialList(Vec<CredentialDescriptor>);
@@ -514,10 +515,7 @@ pub(crate) struct AuthenticatorSelectionCriteria {
     /// https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
     pub resident_key: Option<String>,
 
-    /// https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
-    pub require_resident_key: Option<bool>,
-
-    // Implied by resident_key == "required",
+    // Implied by resident_key == "required", deprecated in webauthn
     // https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
     // require_resident_key: Option<bool>,
     /// https://www.w3.org/TR/webauthn-3/#enumdef-userverificationrequirement
