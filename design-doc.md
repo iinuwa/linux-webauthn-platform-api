@@ -43,3 +43,70 @@ A credential management API local to the desktop also provides other benefits, l
 For these reasons, we should.
 
 As mentioned above, much of this is driven by device credentials. Password credentials are still largely in use, and it would be useful, for example to provide access to password credentials in the same way that device credentials are presented (similar UI components, consent dialogs, etc.). It could also unify how username/password credentials per-origin are stored 9rather than each application having its own schema in the Secret Service API, for example.) For that reason, it would be good to implement. However, it will not be worth our time if no one adopts it. If not enough apps adopt it, then even the apps that do use it will have a strange UX compared to the majority which don't, defeating the purpose of the consistent UI. However, it would still be good to leave the door open to a password credential management API. So the design of the credential management API as a whole should take that into consideration, but more attention will be paid to device credential management.
+
+# API
+
+The CreateCredential() method
+
+GetCredential (IN  s     window,
+               IN  a{sv} options,
+               OUT o     handle);
+
+Gets information about the user.
+
+Supported keys in the options vardict include:
+
+handle_token s
+
+    A string that will be used as the last element of the handle. Must be a valid object path element. See the org.freedesktop.portal.Request documentation for more information about the handle.
+reason s
+
+    A string that can be shown in the dialog to expain why the information is needed. This should be a complete sentence that explains what the application will do with the returned information, for example: Allows your personal information to be included with recipes you share with your friends.
+
+The following results get returned via the "Response" signal:
+
+rp a{sv}
+
+    Vardict with following properties:
+        id s
+            The relying party ID.
+        name s
+            The human-readable relying party name to display to the user.
+user a{sv}
+
+    Vardict with following properties:
+        id ay
+            The raw user ID.
+        displayName s
+            The human-readable name, like a nickname, for the user account. E.g. Alex Mueller.
+        name s
+            The human-readable name, like a username, for the user account, used for disambiguating credentials with similar displayName. E.g. alex.mueller@example.com
+
+image s
+
+    The uri of an image file for the users avatar photo.
+
+IN s window:
+
+    Identifier for the window
+IN a{sv} options:
+
+    Vardict with optional further information
+OUT o handle:
+
+    Object path for the org.freedesktop.portal.Request object representing this call
+
+## U2F Compatibility
+
+Some applications may currently have U2F support but not full WebAuthn support.
+Because WebAuthn is compatible with U2F, we will not implement U2F Register()
+and Sign() methods.
+
+Instead, developers who wish to integrate with the Credential portal and continue to support keys that were previously registered with the U2F protocol should be
+encouraged to implement support for:
+- the FIDO U2F Attestation Statement Format,
+- the FIDO AppID extension, and
+- the FIDO AppID Exclusion extension to support.
+
+Note that registering new U2F keys only requires support for the FIDO U2F
+Attestation Statement Format.
