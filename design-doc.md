@@ -221,7 +221,8 @@ Attestation Statement Format.
 ## Philosophy
 
 - Caller (client) should not have to have a CBOR parser. So CBOR objects will be parsed and broken out when necessary. This focuses on the client (browser, native app), rather than the relying party, which is usually a web service that can easily obtain a CBOR parser. So attestation objects will be returned as CBOR, while extension output will be JSON, for example.
--
+- Move all required parameters from WebAuthn into top-level. Optional parameters go in the `options`
+
 # Motivation and Scope
 
 Properly managing credentials for online services are important for user security.
@@ -241,3 +242,14 @@ A credential management API local to the desktop also provides other benefits, l
 For these reasons, we should.
 
 As mentioned above, much of this is driven by device credentials. Password credentials are still largely in use, and it would be useful, for example to provide access to password credentials in the same way that device credentials are presented (similar UI components, consent dialogs, etc.). It could also unify how username/password credentials per-origin are stored 9rather than each application having its own schema in the Secret Service API, for example.) For that reason, it would be good to implement. However, it will not be worth our time if no one adopts it. If not enough apps adopt it, then even the apps that do use it will have a strange UX compared to the majority which don't, defeating the purpose of the consistent UI. However, it would still be good to leave the door open to a password credential management API. So the design of the credential management API as a whole should take that into consideration, but more attention will be paid to device credential management.
+
+## Other Ecosystem needs
+
+- Password/passkey manager GUI tool (Could be updating GNOME Secrets app)
+- Credential Autofill process/service (Look at Android/Jetpack CredentialManager API, Apple's ASAuthorizationPasswordProvider/SecAddSharedWebCredential)
+  - Should include Credential Provider API to allow third-party password managers to provide credentials as well.
+- GUI component (GNOME?) for displaying/marking a field as requiring a password/passkey authentication that initiates autofill
+- Platform authenticator
+  - Biometric authentication (how to authenticate fingerprint response to OS? How to bind biometric templates to credential key?)
+  - PIN authentication
+  - Hybrid support
