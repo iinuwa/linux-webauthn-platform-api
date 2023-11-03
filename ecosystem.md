@@ -19,6 +19,14 @@ graph
 
   PWAuth[Password Auth]
   PinAuth[PIN Auth]
+  Flatpak;
+  Flathub;
+  SIGN[App Signatures];
+  Sigstore;
+  WAF[Web Application Manifest];
+
+  XDGP[XDG Portal];
+  DBUS[D-Bus];
 
 
   Apps-->CS;
@@ -43,4 +51,14 @@ graph
 
   PAM-->PWAuth;
   PAM-->PinAuth;
+
+  Flathub -->Flatpak;
+  Flatpak-->SIGN;
+  SIGN-->Sigstore;
+  SIGN-->WAF;
+  Flatpak-->XDGP;
+  XDGP-->DBUS;
+  DBUS-->CS-REG;
+  DBUS-->CS-AUTH;
+  CS-->DBUS;
 ```
