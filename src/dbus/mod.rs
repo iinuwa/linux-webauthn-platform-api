@@ -39,7 +39,9 @@ impl CredentialManager {
                 Ok(password_response.into())
             },
             CreateCredentialRequest { public_key: Some(passkey_request), .. } => {
-                let passkey_response = create_passkey("unsandboxed", passkey_request).await?;
+
+                let origin = "xyz.iinuwa.credentials.CredentialManager:local";
+                let passkey_response = create_passkey(origin, passkey_request).await?;
                 Ok(passkey_response.into())
             }
             _ => Err(fdo::Error::Failed("Unknown credential request type".to_string())),
@@ -65,7 +67,7 @@ impl CredentialManager {
         credential_parameters: Vec<PublicKeyCredentialParameters>,
         client_data: String,
         options: MakeCredentialOptions,
-    ) -> fdo::Result<(Vec<u8>, Vec<u8>)> {
+    ) -> fdo::Result<CreatePublicKeyCredentialResponse> {
         let (require_resident_key, require_user_verification) =
             if let Some(authenticator_selection) = options.authenticator_selection {
                 let is_authenticator_storage_capable = true;
@@ -90,7 +92,7 @@ impl CredentialManager {
         let client_data_hash = digest(&SHA256, client_data.as_bytes()).as_ref().to_vec();
         let extensions = None;
         let excluded_credentials = options.excluded_credentials.unwrap_or(Vec::new());
-        webauthn::make_credential(
+        let response = webauthn::make_credential(
             client_data_hash,
             rp,
             user,
@@ -111,7 +113,8 @@ impl CredentialManager {
             webauthn::Error::InvalidStateError => fdo::Error::Failed("Invalid state".to_string()),
             webauthn::Error::NotAllowedError => fdo::Error::AccessDenied("Not allowed".to_string()),
             webauthn::Error::ConstraintError => fdo::Error::Failed("Constraint error".to_string()),
-        })
+        })?;
+        Ok(CreatePublicKeyCredentialResponse { credential_creation_data_json: response.to_json() })
     }
 
     async fn say_hello(&self, name: &str) -> String {
@@ -186,7 +189,7 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
             format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":false}}").as_bytes().to_owned()
         }
     };
-    let (cred_id_bytes, attestation_bytes) = super::webauthn::make_credential(
+    let response = super::webauthn::make_credential(
         client_data_hash,
         rp,
         user,
@@ -199,20 +202,7 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         extensions
     ).await
     .map_err(|_| fdo::Error::Failed("Failed to create public key credential".to_string()))?;
-    let mut cred_id = String::new();
-    let mut attestation_object = String::new();
-    URL_SAFE_NO_PAD.encode_string(attestation_bytes, &mut attestation_object);
-    URL_SAFE_NO_PAD.encode_string(cred_id_bytes, &mut cred_id);
-    let credential_creation_data_json = json!({
-        "id": cred_id,
-        "type": "public-key",
-        "rawId": cred_id,
-        "response": {
-            // clientDataJson
-            "attestationObject": attestation_object
-        }
-    }).to_string();
-    Ok(CreatePublicKeyCredentialResponse { credential_creation_data_json })
+    Ok(CreatePublicKeyCredentialResponse { credential_creation_data_json: response.to_json() })
 }
 
 #[derive(DeserializeDict, Type)]
