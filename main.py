@@ -20,6 +20,46 @@ async def run():
     interface = proxy_object.get_interface(
         'xyz.iinuwa.credentials.CredentialManager1')
 
+    # rsp = await create_password(interface)
+    # rsp = await create_passkey(interface)
+    # print(rsp)
+    rsp = await get_password(interface)
+    # await bus.wait_for_disconnect()
+
+
+async def create_password(interface):
+    password_req = {
+        "r#type": Variant('s', "password"),
+        "password": Variant("a{sv}", {
+            "origin": Variant('s', "https://example.com"),
+            "id": Variant('s', "test@example.com"),
+            "password": Variant('s', "abc123"),
+        })
+    }
+    rsp = await interface.call_create_credential(password_req)
+    return rsp
+
+
+async def get_password(interface):
+    password_req = {
+        "origin": Variant("s", "https://example.com"),
+        "options": Variant("aa{sv}", [
+            {
+                "type": Variant("s", "password"),
+                "password": Variant("a{sv}", {}),
+            }
+        ])
+    }
+    rsp = await interface.call_get_credential(password_req)
+    if rsp['type'].value == 'password':
+        cred = rsp['password'].value
+        id = cred['id'].value
+        password = cred['password'].value
+        return (id, password)
+    return None
+
+
+async def create_passkey(interface):
     rp = {
         "name": Variant('s', "example.com"),
         "id": Variant('s', "example.com"),
@@ -43,8 +83,7 @@ async def run():
     options = {}
     rsp = await interface.call_make_credential(
         rp, user, cred_params, client_data, options)
-    print(rsp)
-    # await bus.wait_for_disconnect()
+    return rsp
 
 
 def main():

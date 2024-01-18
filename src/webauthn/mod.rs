@@ -13,6 +13,7 @@ use ring::{
         ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256, EcdsaVerificationAlgorithm, ECDSA_P256_SHA256_ASN1, self, VerificationAlgorithm,
     },
 };
+use serde::Deserialize;
 use store::{lookup_stored_credentials, store_credential};
 use zbus::zvariant::{DeserializeDict, Type};
 
@@ -41,7 +42,7 @@ pub(crate) async fn make_credential(
     exclude_credential_descriptor_list: Vec<CredentialDescriptor>,
     enterprise_attestation_possible: bool,
     extensions: Option<()>,
-) -> Result<Vec<u8>, Error> {
+) -> Result<(Vec<u8>, Vec<u8>), Error> {
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO:
     let supported_algorithms: [i64; 3] = [
@@ -204,7 +205,7 @@ pub(crate) async fn make_credential(
     )?;
 
     // On successful completion of this operation, the authenticator returns the attestation object to the client.
-    Ok(attestation_object)
+    Ok((credential_id, attestation_object))
 }
 
 fn create_key_pair(alg: i64) -> Result<Vec<u8>, Error> {
@@ -258,7 +259,7 @@ fn sign_attestation(authenticator_data: &[u8], client_data_hash: &[u8], key_pair
         -257 => {
             let rsa = RsaKeyPair::from_pkcs8(key_pair).unwrap();
             let mut signature = vec![0; rsa.public_modulus_len()];
-            rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
+            let _ = rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
             Ok(signature)
         }
         _ => Err(Error::NotSupportedError),
@@ -480,11 +481,14 @@ pub(crate) struct AssertionOptions {
 pub(crate) struct MakeCredentialOptions {
     /// Timeout in milliseconds
     pub timeout: Option<Duration>,
+    #[zvariant(rename = "excludedCredentials")]
     pub excluded_credentials: Option<Vec<CredentialDescriptor>>,
+    #[zvariant(rename = "authenticatorSelection")]
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
     /// https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
     pub attestation: Option<String>, 
     /// extensions input as a JSON object
+    #[zvariant(rename = "extensionData")]
     pub extension_data: Option<String>,
 }
 
@@ -499,6 +503,7 @@ pub(crate) struct CredentialDescriptor {
     /// The value SHOULD be a member of PublicKeyCredentialType but client
     /// platforms MUST ignore any PublicKeyCredentialDescriptor with an unknown
     /// type.
+    #[zvariant(rename = "type")]
     cred_type: String,
     /// Credential ID of the public key credential the caller is referring to.
     id: Vec<u8>,
@@ -510,15 +515,19 @@ pub(crate) struct CredentialDescriptor {
 /// https://www.w3.org/TR/webauthn-3/#dictionary-authenticatorSelection
 pub(crate) struct AuthenticatorSelectionCriteria {
     /// https://www.w3.org/TR/webauthn-3/#enum-attachment
+    #[zvariant(rename = "authenticatorAttachment")]
     pub authenticator_attachment: Option<String>,
 
     /// https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
+    #[zvariant(rename = "residentKey")]
     pub resident_key: Option<String>,
 
     // Implied by resident_key == "required", deprecated in webauthn
     // https://www.w3.org/TR/webauthn-3/#enum-residentKeyRequirement
+    // #[zvariant(rename = "requireResidentKey")]
     // require_resident_key: Option<bool>,
     /// https://www.w3.org/TR/webauthn-3/#enumdef-userverificationrequirement
+    #[zvariant(rename = "userVerification")]
     pub user_verification: Option<String>,
 }
 

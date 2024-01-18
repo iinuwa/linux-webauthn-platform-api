@@ -1,10 +1,11 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Write, Read};
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use ring::rand::{self, SecureRandom};
 
 use super::{CredentialDescriptor, CredentialSource, Error, RelyingParty};
 static mut CRED_DIR: String = String::new();
@@ -12,6 +13,65 @@ static mut CRED_DIR: String = String::new();
 pub(crate) fn initialize() {
     let cred_dir = get_cred_dir();
     fs::create_dir_all(cred_dir).unwrap();
+}
+
+pub(crate) async fn store_password(origin: &str, id: &str, password: &str) -> Result<(), Error> {
+    let cred_path = {
+        let mut d = get_cred_dir();
+        let rng = rand::SystemRandom::new();
+        let mut buf = [0; 32];
+        rng.fill(&mut buf).map_err(|_| Error::UnknownError)?;
+        let id = URL_SAFE_NO_PAD.encode(buf);
+        d.push(id);
+        d
+    };
+    let mut cred_file = File::create(cred_path).unwrap();
+    cred_file.write(b"v=1 ").unwrap();
+    cred_file.write(b"type=password ").unwrap();
+    cred_file.write_fmt(format_args!("origin={} ", origin)).unwrap();
+    cred_file.write_fmt(format_args!("id={} ", id)).unwrap();
+    cred_file.write_fmt(format_args!("password={} ", password)).unwrap();
+    Ok(())
+}
+
+pub(crate) async fn lookup_password_credentials(origin: &str) -> Option<(String, String)> {
+    let cred_path = get_cred_dir();
+    'file: for cred_file in cred_path.read_dir().expect("credential directory to exist") {
+            let credential = match File::open(cred_file.unwrap().path()) {
+                Ok(mut cred_file) => {
+                    let mut cred = String::new();
+                    cred_file.read_to_string(&mut cred);
+                    let mut password: Option<&str> = None;
+                    let mut id: Option<&str> = None;
+                    let mut origin_matches: bool = false;
+
+                    for key in cred.split(' ') {
+                        if key.starts_with("origin=") {
+                            let (_, origins) = key.split_once('=').unwrap();
+                            if !origins.split(',').any(|o| o == origin) {
+                                continue 'file;
+                            } else {
+                                origin_matches = true;
+                            }
+                        } else if key.starts_with("id=") {
+                            id = key.split_once('=').map(|(_, i)| i);
+                        } else if key.starts_with("password=") {
+                            password = key.split_once('=').map(|(_, p)| p);
+                        }
+                    }
+                    if origin_matches {
+                        id.zip(password).map(|(i, p)| (i.to_string(), p.to_string()))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+        if credential.is_some() {
+            return credential;
+        }
+    }
+    None
 }
 
 pub(super) async fn store_credential(credential_source: CredentialSource) -> Result<(), Error> {
@@ -66,5 +126,6 @@ fn get_cred_dir() -> PathBuf {
     else {
         PathBuf::from_str(&env::var("HOME").expect("$HOME not set")).unwrap().join(".local/share")
     };
+    fs::create_dir_all(&data_home).unwrap();
     data_home.join("webauthn/credentials")
 }
