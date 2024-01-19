@@ -1,5 +1,4 @@
 mod cbor;
-pub(crate) mod store;
 
 use std::time::Duration;
 
@@ -15,9 +14,9 @@ use ring::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use store::{lookup_stored_credentials, store_credential};
 use zbus::zvariant::{DeserializeDict, Type};
 
+use crate::store::{lookup_stored_credentials, store_credential};
 use self::cbor::CborWriter;
 
 static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
@@ -35,7 +34,7 @@ pub enum Error {
 pub(crate) async fn make_credential(
     client_data_hash: Vec<u8>,
     rp_entity: RelyingParty,
-    user_entity: User,
+    user_entity: &User,
     require_resident_key: bool,
     require_user_presence: bool,
     require_user_verification: bool,
@@ -43,7 +42,7 @@ pub(crate) async fn make_credential(
     exclude_credential_descriptor_list: Vec<CredentialDescriptor>,
     enterprise_attestation_possible: bool,
     extensions: Option<()>,
-) -> Result<CreatePublicKeyCredentialResponse, Error> {
+) -> Result<(CreatePublicKeyCredentialResponse, CredentialSource), Error> {
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO:
     let supported_algorithms: [i64; 3] = [
@@ -126,7 +125,7 @@ pub(crate) async fn make_credential(
     // Let (publicKey, privateKey) be a new pair of cryptographic keys using the combination of PublicKeyCredentialType and cryptographic parameters represented by the first item in credTypesAndPubKeyAlgs that is supported by this authenticator.
     let key_pair = create_key_pair(cred_pub_key_parameters.alg)?;
     // Let userHandle be userEntity.id.
-    let user_handle = user_entity.id;
+    let user_handle = user_entity.id.clone();
 
     // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
     // Let credentialId be a new credential id.
@@ -214,7 +213,7 @@ pub(crate) async fn make_credential(
         None,
         None
     );
-    Ok(response)
+    Ok((response, credential_source))
 }
 
 fn create_key_pair(alg: i64) -> Result<Vec<u8>, Error> {
@@ -305,20 +304,20 @@ fn create_attestation_object(
 ) -> Result<Vec<u8>, Error> {
     let mut attestation_object = Vec::new();
     let mut cbor_writer = CborWriter::new(&mut attestation_object);
-    cbor_writer.write_map_start(3);
+    cbor_writer.write_map_start(3).unwrap();
 
-    cbor_writer.write_text("fmt");
-    cbor_writer.write_text("packed");
+    cbor_writer.write_text("fmt").unwrap();
+    cbor_writer.write_text("packed").unwrap();
 
-    cbor_writer.write_text("attStmt");
-    cbor_writer.write_map_start(2);
-    cbor_writer.write_text("alg");
-    cbor_writer.write_number(algorithm.into());
-    cbor_writer.write_text("sig");
-    cbor_writer.write_bytes(signature);
+    cbor_writer.write_text("attStmt").unwrap();
+    cbor_writer.write_map_start(2).unwrap();
+    cbor_writer.write_text("alg").unwrap();
+    cbor_writer.write_number(algorithm.into()).unwrap();
+    cbor_writer.write_text("sig").unwrap();
+    cbor_writer.write_bytes(signature).unwrap();
 
-    cbor_writer.write_text("authData");
-    cbor_writer.write_bytes(authenticator_data);
+    cbor_writer.write_text("authData").unwrap();
+    cbor_writer.write_bytes(authenticator_data).unwrap();
 
     Ok(attestation_object)
 }
@@ -454,13 +453,14 @@ pub(crate) struct RelyingParty {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub(crate) struct User {
-    id: Vec<u8>,
-    name: String,
-    display_name: String,
+    pub id: Vec<u8>,
+    pub name: String,
+    pub display_name: String,
 }
 
 struct Assertion {}
 
+/*
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub(crate) struct ClientData {
@@ -477,6 +477,7 @@ pub(crate) struct TokenBinding {
     status: String,
     id: Option<String>,
 }
+*/
 
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
@@ -550,19 +551,19 @@ pub(crate) struct PublicKeyCredentialParameters {
 }
 
 #[derive(Clone)]
-struct CredentialSource {
-    cred_type: PublicKeyCredentialType,
+pub struct CredentialSource {
+    pub cred_type: PublicKeyCredentialType,
 
     /// A probabilistically-unique byte sequence identifying a public key
     /// credential source and its authentication assertions.
-    id: Vec<u8>,
+    pub id: Vec<u8>,
 
     /// The credential private key
-    private_key: Vec<u8>,
+    pub private_key: Vec<u8>,
 
     /// The Relying Party Identifier, for the Relying Party this public key
     /// credential source is scoped to.
-    rp_id: String,
+    pub rp_id: String,
 
     /// The user handle is specified by a Relying Party, as the value of
     /// `user.id`, and used to map a specific public key credential to a specific
@@ -571,20 +572,21 @@ struct CredentialSource {
     ///
     /// A user handle is an opaque byte sequence with a maximum size of 64
     /// bytes, and is not meant to be displayed to the user.
-    user_handle: Option<Vec<u8>>,
+    pub user_handle: Option<Vec<u8>>,
 
     // Any other information the authenticator chooses to include.
     /// other information used by the authenticator to inform its UI. For
     /// example, this might include the user’s displayName. otherUI is a
     /// mutable item and SHOULD NOT be bound to the public key credential
     /// source in a way that prevents otherUI from being updated.
-    other_ui: Option<String>,
+    pub other_ui: Option<String>,
 }
 
 #[derive(Clone)]
 enum PublicKeyCredentialType {
     PublicKey,
 }
+
 enum WebAuthnDeviceCounterType {
     /// Authenticator is a U2F device (and therefore does not support a counter
     /// on registration and may or may not support a counter on assertion).

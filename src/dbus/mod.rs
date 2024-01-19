@@ -1,14 +1,11 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use openssl::pkey::Public;
-use ring::digest::{digest, SHA256};
-use serde::Deserializer;
-use serde_json::json;
 use zbus::zvariant::{DeserializeDict, SerializeDict};
 use zbus::{dbus_interface, fdo, Connection, ConnectionBuilder, Result, zvariant::Type};
 
+use crate::store;
 use crate::webauthn::{
-    self, MakeCredentialOptions, PublicKeyCredentialParameters, RelyingParty, User,
+    MakeCredentialOptions, PublicKeyCredentialParameters, RelyingParty, User,
 };
 
 pub(crate) async fn start_service(
@@ -33,14 +30,14 @@ impl CredentialManager {
         request: CreateCredentialRequest,
     ) -> fdo::Result<CreateCredentialResponse> {
 
+        let origin = "xyz.iinuwa.credentials.CredentialManager:local";
         let response = match request {
             CreateCredentialRequest { password: Some(password_request), .. } => {
-                let password_response = create_password(password_request).await?;
+                let password_response = create_password(origin, password_request).await?;
                 Ok(password_response.into())
             },
             CreateCredentialRequest { public_key: Some(passkey_request), .. } => {
 
-                let origin = "xyz.iinuwa.credentials.CredentialManager:local";
                 let passkey_response = create_passkey(origin, passkey_request).await?;
                 Ok(passkey_response.into())
             }
@@ -52,7 +49,7 @@ impl CredentialManager {
     async fn get_credential(&self, request: GetCredentialRequest) -> fdo::Result<GetCredentialResponse> {
         for option in request.options {
             if option.password.is_some() {
-                if let Some((id, password)) = super::webauthn::store::lookup_password_credentials(&request.origin).await {
+                if let Some((id, password)) = store::lookup_password_credentials(&request.origin).await {
                     return Ok(PasswordCredential { id, password }.into())
                 }
             }
@@ -66,10 +63,29 @@ impl CredentialManager {
     }
 }
 
-async fn create_password(request: CreatePasswordCredentialRequest) -> fdo::Result<CreatePasswordCredentialResponse> {
-    super::webauthn::store::store_password(&request.origin, &request.id, &request.password).await
+async fn create_password(origin: &str, request: CreatePasswordCredentialRequest) -> fdo::Result<CreatePasswordCredentialResponse> {
+    /*
+    store::store_password(&request.origin, &request.id, &request.password).await
         .map(|_| CreatePasswordCredentialResponse{})
-        .map_err(|_| fdo::Error::Failed("Failed to store password".to_string()))
+        .map_err(|_| fdo::Error::Failed("Failed to store password".to_string()));
+    */
+    let contents = format!(
+        "id={}&password={}",
+        request.id.replace("%", "%25").replace('&', "%26"),
+        request.password.replace("%", "%25").replace('&', "%26")
+    );
+    let display_name = format!("Password for {origin}"); // TODO
+    store::store_secret(
+        &[origin],
+        &display_name,
+        &request.id,
+        "secret/password",
+        None,
+        contents.as_bytes()
+    )
+        .await
+        .map_err(|_| fdo::Error::Failed("".to_string()))?;
+    Ok(CreatePasswordCredentialResponse {})
 }
 
 async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest) -> fdo::Result<CreatePublicKeyCredentialResponse> {
@@ -122,10 +138,10 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
             format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":false}}").as_bytes().to_owned()
         }
     };
-    let response = super::webauthn::make_credential(
+    let (response, cred_source) = super::webauthn::make_credential(
         client_data_hash,
         rp,
-        user,
+        &user,
         require_resident_key,
         require_user_presence,
         require_user_verification,
@@ -135,6 +151,39 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         extensions
     ).await
     .map_err(|_| fdo::Error::Failed("Failed to create public key credential".to_string()))?;
+    let mut contents = String::new();
+    contents.push_str("type=public-key&"); // TODO: Don't hardcode public-key?
+    contents.push_str("id=");
+    URL_SAFE_NO_PAD.encode_string(cred_source.id, &mut contents);
+    contents.push_str("&");
+    contents.push_str("key=");
+    URL_SAFE_NO_PAD.encode_string(cred_source.private_key, &mut contents);
+    contents.push_str("&");
+    contents.push_str("rp_id=");
+    contents.push_str(&cred_source.rp_id);
+    if let Some(user_handle) = &cred_source.user_handle {
+        contents.push_str("user_handle=");
+        URL_SAFE_NO_PAD.encode_string(user_handle, &mut contents);
+    }
+
+    if let Some(other_ui) = cred_source.other_ui {
+        if cred_source.user_handle.is_some() {
+            contents.push_str("&");
+        }
+        contents.push_str("other_ui=");
+        contents.push_str(&other_ui);
+    }
+    let content_type = "secret/public-key";
+    let display_name = "test"; // TODO
+    store::store_secret(
+        &[origin],
+        display_name,
+        &user.display_name,
+        content_type,
+        None,
+        contents.as_bytes()
+    ).await
+    .map_err(|_| fdo::Error::Failed("Failed to save passkey to storage".to_string()))?;
     Ok(CreatePublicKeyCredentialResponse { credential_creation_data_json: response.to_json() })
 }
 

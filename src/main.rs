@@ -1,4 +1,5 @@
 mod dbus;
+mod store;
 mod webauthn;
 
 use std::{error::Error, fs, path::Path};
@@ -14,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 async fn run(seed_key: Vec<u8>) -> Result<(), Box<dyn Error>> {
     let service_name = "xyz.iinuwa.credentials.CredentialManager";
     let path = "/xyz/iinuwa/credentials/CredentialManager";
-    webauthn::store::initialize();
+    store::initialize();
     let _conn = dbus::start_service(service_name, path, seed_key).await?;
     println!("Started");
     loop {
