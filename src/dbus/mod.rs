@@ -1,5 +1,6 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use ring::digest;
 use zbus::zvariant::{DeserializeDict, SerializeDict};
 use zbus::{dbus_interface, fdo, Connection, ConnectionBuilder, Result, zvariant::Type};
 
@@ -97,19 +98,19 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         .and_then(|c| c.as_str())
         .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `challenge` field".to_string()))?
         .to_owned();
-    let rp = 
-    {
-        let rp_json = json.get("rp").unwrap().to_string();
-            println!("{rp_json}");
-            serde_json::from_str::<RelyingParty>(&rp_json).unwrap()
-    };
-        //.and_then(|rp| Some(.unwrap()))
-        //.unwrap();
-        //.ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `rp` field".to_string()))?;
+    let rp = json.get("rp")
+        .and_then(|val| serde_json::from_str::<RelyingParty>(&val.to_string()).ok())
+        .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `rp` field".to_string()))?;
     let user = json.get("user")
-        .and_then(|rp| serde_json::from_str::<User>(&rp.to_string()).ok())
-        .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `user` field".to_string()))?;
-    let options = serde_json::from_value::<MakeCredentialOptions>(request_value.clone())
+        .ok_or(fdo::Error::InvalidArgs("JSON missing `user` field".to_string()))
+        .and_then(|val| {
+            serde_json::from_str::<User>(&val.to_string())
+            .or_else(|e| {
+                let msg = format!("JSON missing `user` field: {e}");
+                return Err(fdo::Error::InvalidArgs(msg));
+            })
+        })?;
+    let options = serde_json::from_str::<MakeCredentialOptions>(&request_value.to_string())
         .map_err(|_| fdo::Error::InvalidArgs("Invalid request JSON".to_string()))?;
     let (require_resident_key, require_user_verification) =
         if let Some(authenticator_selection) = options.authenticator_selection {
@@ -134,14 +135,22 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
     let enterprise_attestation_possible = false;
     let extensions = None;
     let credential_parameters = request_value.clone().get("pubKeyCredParams")
-        .and_then(|c| serde_json::from_value::<Vec<PublicKeyCredentialParameters>>(c.clone()).ok())
-        .ok_or_else(|| fdo::Error::InvalidArgs("Request JSON missing or invalid `pubKeyCredParams` key".to_string()))?;
+        .ok_or_else(|| fdo::Error::InvalidArgs("Request JSON missing or invalid `pubKeyCredParams` key".to_string()))
+        .and_then(|val| 
+            serde_json::from_str::<Vec<PublicKeyCredentialParameters>>(&val.to_string())
+            .map_err(|e| fdo::Error::InvalidArgs(format!("Request JSON missing or invalid `pubKeyCredParams` key: {e}")))
+        )?;
     let excluded_credentials = options.excluded_credentials.unwrap_or(Vec::new());
 
     let client_data_hash = match request.client_data_hash {
         Some(hash) => hash,
         None => {
-            format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":false}}").as_bytes().to_owned()
+            let client_data_json = format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":false}}");
+            digest::digest(
+                &digest::SHA256,
+                client_data_json.as_bytes())
+            .as_ref()
+            .to_owned()
         }
     };
     let (response, cred_source) = super::webauthn::make_credential(
@@ -159,25 +168,20 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
     .map_err(|_| fdo::Error::Failed("Failed to create public key credential".to_string()))?;
 
     let mut contents = String::new();
-    contents.push_str("type=public-key&"); // TODO: Don't hardcode public-key?
-    contents.push_str("id=");
+    contents.push_str("type=public-key"); // TODO: Don't hardcode public-key?
+    contents.push_str("&id=");
     URL_SAFE_NO_PAD.encode_string(cred_source.id, &mut contents);
-    contents.push_str("&");
-    contents.push_str("key=");
+    contents.push_str("&key=");
     URL_SAFE_NO_PAD.encode_string(cred_source.private_key, &mut contents);
-    contents.push_str("&");
-    contents.push_str("rp_id=");
+    contents.push_str("&rp_id=");
     contents.push_str(&cred_source.rp_id);
     if let Some(user_handle) = &cred_source.user_handle {
-        contents.push_str("user_handle=");
+        contents.push_str("&user_handle=");
         URL_SAFE_NO_PAD.encode_string(user_handle, &mut contents);
     }
 
     if let Some(other_ui) = cred_source.other_ui {
-        if cred_source.user_handle.is_some() {
-            contents.push_str("&");
-        }
-        contents.push_str("other_ui=");
+        contents.push_str("&other_ui=");
         contents.push_str(&other_ui);
     }
     let content_type = "secret/public-key";
@@ -314,6 +318,7 @@ mod test {
     use super::{ create_passkey, CreatePublicKeyCredentialRequest };
     #[test]
     fn test_json() {
+        super::store::initialize();
         let request_json = json!({
             "challenge": "LcBRERr1VHJSTR3vtTG35w",
             "rp": {"name": "Example Org", "id": "example.com"},
@@ -329,6 +334,9 @@ mod test {
             client_data_hash: None
         };
         let response = async_std::task::block_on(create_passkey("", request));
+        if let Err(e) = &response {
+            println!("{e}");
+        }
         assert_eq!(response.is_ok(), true);
     }
 }

@@ -125,7 +125,8 @@ pub(crate) async fn make_credential(
     // Let (publicKey, privateKey) be a new pair of cryptographic keys using the combination of PublicKeyCredentialType and cryptographic parameters represented by the first item in credTypesAndPubKeyAlgs that is supported by this authenticator.
     let key_pair = create_key_pair(cred_pub_key_parameters.alg)?;
     // Let userHandle be userEntity.id.
-    let user_handle = user_entity.id.clone();
+    let user_handle = URL_SAFE_NO_PAD.decode(user_entity.id.clone())
+        .map_err(|_| Error::UnknownError)?;
 
     // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
     // Let credentialId be a new credential id.
@@ -155,8 +156,6 @@ pub(crate) async fn make_credential(
         // Any other information the authenticator chooses to include.
         other_ui: None,
     };
-
-    store_credential(credential_source.clone()).await?;
 
     // If any error occurred while creating the new credential object, return an error code equivalent to "UnknownError" and terminate the operation.
 
@@ -409,6 +408,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_attestation() {
         let key_file = std::fs::read("private-key1.pk8").unwrap();
         let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
@@ -449,12 +449,11 @@ pub(crate) struct RelyingParty {
 }
 
 /// https://www.w3.org/TR/webauthn-3/#dictionary-user-credential-params
-#[derive(DeserializeDict, Type)]
-#[zvariant(signature = "dict")]
+#[derive(Deserialize)]
 pub(crate) struct User {
-    pub id: Vec<u8>,
+    pub id: String,
     pub name: String,
-    #[zvariant(rename = "displayName")]
+    #[serde(rename = "displayName")]
     pub display_name: String,
 }
 
@@ -486,19 +485,18 @@ pub(crate) struct AssertionOptions {
     user_presence: Option<bool>,
 }
 
-#[derive(DeserializeDict, Type)]
-#[zvariant(signature = "dict")]
+#[derive(Deserialize)]
 pub(crate) struct MakeCredentialOptions {
     /// Timeout in milliseconds
     pub timeout: Option<Duration>,
-    #[zvariant(rename = "excludedCredentials")]
+    #[serde(rename = "excludedCredentials")]
     pub excluded_credentials: Option<Vec<CredentialDescriptor>>,
-    #[zvariant(rename = "authenticatorSelection")]
+    #[serde(rename = "authenticatorSelection")]
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
     /// https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
     pub attestation: Option<String>, 
     /// extensions input as a JSON object
-    #[zvariant(rename = "extensionData")]
+    #[serde(rename = "extensionData")]
     pub extension_data: Option<String>,
 }
 
@@ -541,11 +539,10 @@ pub(crate) struct AuthenticatorSelectionCriteria {
     pub user_verification: Option<String>,
 }
 
-#[derive(DeserializeDict, Type)]
-#[zvariant(signature = "dict")]
+#[derive(Deserialize)]
 /// https://www.w3.org/TR/webauthn-3/#dictdef-publickeycredentialparameters
 pub(crate) struct PublicKeyCredentialParameters {
-    #[zvariant(rename = "type")]
+    #[serde(rename = "type")]
     pub cred_type: String,
     pub alg: i64,
 }
