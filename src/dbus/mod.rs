@@ -1,13 +1,10 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use ring::digest;
 use zbus::zvariant::{DeserializeDict, SerializeDict};
 use zbus::{dbus_interface, fdo, Connection, ConnectionBuilder, Result, zvariant::Type};
 
 use crate::store;
-use crate::webauthn::{
-    MakeCredentialOptions, PublicKeyCredentialParameters, RelyingParty, User,
-};
+use crate::webauthn;
 
 pub(crate) async fn start_service(
     service_name: &str,
@@ -32,13 +29,12 @@ impl CredentialManager {
     ) -> fdo::Result<CreateCredentialResponse> {
 
         let origin = "xyz.iinuwa.credentials.CredentialManager:local";
-        let response = match request {
-            CreateCredentialRequest { password: Some(password_request), .. } => {
+        let response = match (request.r#type.as_ref(), request.password, request.public_key) {
+            ("password", Some(password_request), _ ) => {
                 let password_response = create_password(origin, password_request).await?;
                 Ok(password_response.into())
             },
-            CreateCredentialRequest { public_key: Some(passkey_request), .. } => {
-
+            ("publicKey", _, Some(passkey_request)) => {
                 let passkey_response = create_passkey(origin, passkey_request).await?;
                 Ok(passkey_response.into())
             }
@@ -90,81 +86,7 @@ async fn create_password(origin: &str, request: CreatePasswordCredentialRequest)
 }
 
 async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest) -> fdo::Result<CreatePublicKeyCredentialResponse> {
-    let request_value = serde_json::from_str::<serde_json::Value>(&request.request_json)
-        .map_err(|_| fdo::Error::InvalidArgs("Invalid request JSON".to_string()))?;
-    let json = request_value.as_object()
-        .ok_or_else(|| fdo::Error::InvalidArgs("Invalid request JSON".to_string()))?;
-    let challenge = json.get("challenge")
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `challenge` field".to_string()))?
-        .to_owned();
-    let rp = json.get("rp")
-        .and_then(|val| serde_json::from_str::<RelyingParty>(&val.to_string()).ok())
-        .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `rp` field".to_string()))?;
-    let user = json.get("user")
-        .ok_or(fdo::Error::InvalidArgs("JSON missing `user` field".to_string()))
-        .and_then(|val| {
-            serde_json::from_str::<User>(&val.to_string())
-            .or_else(|e| {
-                let msg = format!("JSON missing `user` field: {e}");
-                return Err(fdo::Error::InvalidArgs(msg));
-            })
-        })?;
-    let options = serde_json::from_str::<MakeCredentialOptions>(&request_value.to_string())
-        .map_err(|_| fdo::Error::InvalidArgs("Invalid request JSON".to_string()))?;
-    let (require_resident_key, require_user_verification) =
-        if let Some(authenticator_selection) = options.authenticator_selection {
-            let is_authenticator_storage_capable = true;
-            let require_resident_key = authenticator_selection.resident_key.map_or_else(
-                || false,
-                |r| r == "required" || (r == "preferred" && is_authenticator_storage_capable),
-            ); // fallback to authenticator_selection.require_resident_key == true for WebAuthn Level 1?
-
-            let authenticator_can_verify_users = true;
-            let require_user_verification =
-                authenticator_selection.user_verification.map_or_else(
-                    || false,
-                    |r| r == "required" || (r == "preferred" && authenticator_can_verify_users),
-                );
-
-            (require_resident_key, require_user_verification)
-        } else {
-            (false, false)
-        };
-    let require_user_presence = true;
-    let enterprise_attestation_possible = false;
-    let extensions = None;
-    let credential_parameters = request_value.clone().get("pubKeyCredParams")
-        .ok_or_else(|| fdo::Error::InvalidArgs("Request JSON missing or invalid `pubKeyCredParams` key".to_string()))
-        .and_then(|val| 
-            serde_json::from_str::<Vec<PublicKeyCredentialParameters>>(&val.to_string())
-            .map_err(|e| fdo::Error::InvalidArgs(format!("Request JSON missing or invalid `pubKeyCredParams` key: {e}")))
-        )?;
-    let excluded_credentials = options.excluded_credentials.unwrap_or(Vec::new());
-
-    let client_data_hash = match request.client_data_hash {
-        Some(hash) => hash,
-        None => {
-            let client_data_json = format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":false}}");
-            digest::digest(
-                &digest::SHA256,
-                client_data_json.as_bytes())
-            .as_ref()
-            .to_owned()
-        }
-    };
-    let (response, cred_source) = super::webauthn::make_credential(
-        client_data_hash,
-        rp,
-        &user,
-        require_resident_key,
-        require_user_presence,
-        require_user_verification,
-        credential_parameters,
-        excluded_credentials,
-        enterprise_attestation_possible,
-        extensions
-    ).await
+    let (response, cred_source, user) = webauthn::create_credential(origin, &request.request_json, true)
     .map_err(|_| fdo::Error::Failed("Failed to create public key credential".to_string()))?;
 
     let mut contents = String::new();
@@ -256,6 +178,7 @@ pub struct CreatePublicKeyCredentialResponse {
 impl Into<CreateCredentialResponse> for CreatePublicKeyCredentialResponse {
     fn into(self) -> CreateCredentialResponse {
         CreateCredentialResponse {
+            // TODO: Decide on camelCase or kebab-case for cred types
             r#type: "public-key".to_string(),
             public_key: Some(self),
             password: None,

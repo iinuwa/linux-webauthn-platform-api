@@ -29,10 +29,82 @@ pub enum Error {
     InvalidStateError,
     NotAllowedError,
     ConstraintError,
+    InternalError(String),
+}
+pub(crate) fn create_credential(origin: &str, options: &str, same_origin: bool) -> Result<(CreatePublicKeyCredentialResponse, CredentialSource, User), Error> {
+    let request_value = serde_json::from_str::<serde_json::Value>(options)
+        .map_err(|_| Error::InternalError("Invalid request JSON".to_string()))?;
+    let json = request_value.as_object()
+        .ok_or_else(|| Error::InternalError("Invalid request JSON".to_string()))?;
+    let challenge = json.get("challenge")
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| Error::InternalError("JSON missing `challenge` field".to_string()))?
+        .to_owned();
+    let rp = json.get("rp")
+        .and_then(|val| serde_json::from_str::<RelyingParty>(&val.to_string()).ok())
+        .ok_or_else(|| Error::InternalError("JSON missing `rp` field".to_string()))?;
+    let user = json.get("user")
+        .ok_or(Error::InternalError("JSON missing `user` field".to_string()))
+        .and_then(|val| {
+            serde_json::from_str::<User>(&val.to_string())
+            .or_else(|e| {
+                let msg = format!("JSON missing `user` field: {e}");
+                return Err(Error::InternalError(msg));
+            })
+        })?;
+    let other_options = serde_json::from_str::<MakeCredentialOptions>(&request_value.to_string())
+        .map_err(|_| Error::InternalError("Invalid request JSON".to_string()))?;
+    let (require_resident_key, require_user_verification) =
+        if let Some(authenticator_selection) = other_options.authenticator_selection {
+            let is_authenticator_storage_capable = true;
+            let require_resident_key = authenticator_selection.resident_key.map_or_else(
+                || false,
+                |r| r == "required" || (r == "preferred" && is_authenticator_storage_capable),
+            ); // fallback to authenticator_selection.require_resident_key == true for WebAuthn Level 1?
+
+            let authenticator_can_verify_users = true;
+            let require_user_verification =
+                authenticator_selection.user_verification.map_or_else(
+                    || false,
+                    |r| r == "required" || (r == "preferred" && authenticator_can_verify_users),
+                );
+
+            (require_resident_key, require_user_verification)
+        } else {
+            (false, false)
+        };
+    let require_user_presence = true;
+    let enterprise_attestation_possible = false;
+    let extensions = None;
+    let credential_parameters = request_value.clone().get("pubKeyCredParams")
+        .ok_or_else(|| Error::InternalError("Request JSON missing or invalid `pubKeyCredParams` key".to_string()))
+        .and_then(|val| 
+            serde_json::from_str::<Vec<PublicKeyCredentialParameters>>(&val.to_string())
+            .map_err(|e| Error::InternalError(format!("Request JSON missing or invalid `pubKeyCredParams` key: {e}")))
+        )?;
+    let excluded_credentials = other_options.excluded_credentials.unwrap_or(Vec::new());
+
+    super::webauthn::make_credential(
+        challenge,
+        origin,
+        !same_origin,
+        rp,
+        &user,
+        require_resident_key,
+        require_user_presence,
+        require_user_verification,
+        credential_parameters,
+        excluded_credentials,
+        enterprise_attestation_possible,
+        extensions
+    ).map(|(response, cred_source)| (response, cred_source, user))
+
 }
 
-pub(crate) async fn make_credential(
-    client_data_hash: Vec<u8>,
+pub(crate) fn make_credential(
+    challenge: String,
+    origin: &str,
+    cross_origin: bool,
     rp_entity: RelyingParty,
     user_entity: &User,
     require_resident_key: bool,
@@ -53,6 +125,13 @@ pub(crate) async fn make_credential(
 
     // When this operation is invoked, the authenticator MUST perform the following procedure:
     // Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code equivalent to "UnknownError" and terminate the operation.
+    let cross_origin_str = if cross_origin { "true" } else { "false" };
+    let client_data_json = format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":{cross_origin_str}}}");
+    let client_data_hash = digest::digest(
+        &digest::SHA256,
+        client_data_json.as_bytes()
+        ).as_ref()
+        .to_owned();
     if client_data_hash.len() != 32 {
         return Err(Error::UnknownError);
     }
@@ -208,7 +287,7 @@ pub(crate) async fn make_credential(
         credential_id,
         attestation_object,
         authenticator_data,
-        None,
+        client_data_json,
         None,
         None
     );
@@ -616,9 +695,7 @@ pub struct CreatePublicKeyCredentialResponse {
 /// Returned from a creation of a new public key credential.
 pub struct AttestationResponse {
     /// clientDataJSON.
-    /// May be omitted if client_data_hash is passed by client, i.e. when custom
-    /// client data is generated by client, not the platform.
-    client_data_json: Option<String>,
+    client_data_json: String,
 
     /// Bytes containing authenticator data and an attestation statement.
     attestation_object: Vec<u8>,
@@ -641,7 +718,7 @@ pub struct AttestationResponse {
 }
 
 impl CreatePublicKeyCredentialResponse {
-    pub fn new(id: Vec<u8>, attestation_object: Vec<u8>, authenticator_data: Vec<u8>, client_data_json: Option<String>, transports: Option<Vec<String>>, extension_output_json: Option<String>) -> Self {
+    pub fn new(id: Vec<u8>, attestation_object: Vec<u8>, authenticator_data: Vec<u8>, client_data_json: String, transports: Option<Vec<String>>, extension_output_json: Option<String>) -> Self {
         Self {
             cred_type: "public-key".to_string(),
             raw_id: id,
@@ -660,14 +737,11 @@ impl CreatePublicKeyCredentialResponse {
     }
 
     pub fn to_json(&self) -> String {
-        let mut response = json!({
+        let response = json!({
+            "clientDataJSON": self.response.client_data_json,
             "attestationObject": URL_SAFE_NO_PAD.encode(&self.response.attestation_object),
             "transports": self.response.transports,
         });
-        if let Some(client_data_json) = &self.response.client_data_json {
-            response.as_object_mut().unwrap()
-                .insert("clientDataJSON".to_string(), serde_json::Value::String(client_data_json.to_owned()));
-        }
         let mut output = json!({
             "id": self.get_id(),
             "rawId": self.get_id(),

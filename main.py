@@ -8,7 +8,6 @@ from dbus_next import Variant
 
 
 async def run():
-    create_passkey(None)
     bus = await MessageBus().connect()
 
     with open('xyz.iinuwa.credentials.CredentialManager.xml', 'r') as f:
@@ -88,13 +87,14 @@ async def create_passkey(interface):
     req_json = json.dumps(request)
     print(req_json)
     req = {
-        "type": Variant('s', "public-key"),
+        "type": Variant('s', "publicKey"),
         "publicKey": Variant('a{sv}', {
             "request_json": Variant('s', req_json)
         })
     }
     rsp = await interface.call_create_credential(req)
-    return rsp
+    if rsp['type'].value == 'public-key':
+        return rsp['public_key'].value['credential_creation_data_json'].value
 
 
 async def make_passkey(interface):
