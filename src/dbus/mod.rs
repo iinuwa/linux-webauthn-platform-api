@@ -95,8 +95,8 @@ async fn create_password(
     */
     let contents = format!(
         "id={}&password={}",
-        request.id.replace("%", "%25").replace('&', "%26"),
-        request.password.replace("%", "%25").replace('&', "%26")
+        request.id.replace('%', "%25").replace('&', "%26"),
+        request.password.replace('%', "%25").replace('&', "%26")
     );
     let display_name = format!("Password for {origin}"); // TODO
     store::store_secret(
@@ -193,11 +193,11 @@ pub struct CreateCredentialResponse {
 #[zvariant(signature = "dict")]
 pub struct CreatePasswordCredentialResponse {}
 
-impl Into<CreateCredentialResponse> for CreatePasswordCredentialResponse {
-    fn into(self) -> CreateCredentialResponse {
+impl From<CreatePasswordCredentialResponse> for CreateCredentialResponse{
+    fn from(response: CreatePasswordCredentialResponse) -> Self {
         CreateCredentialResponse {
             r#type: "password".to_string(),
-            password: Some(self),
+            password: Some(response),
             public_key: None,
         }
     }
@@ -209,12 +209,12 @@ pub struct CreatePublicKeyCredentialResponse {
     credential_creation_data_json: String,
 }
 
-impl Into<CreateCredentialResponse> for CreatePublicKeyCredentialResponse {
-    fn into(self) -> CreateCredentialResponse {
+impl From<CreatePublicKeyCredentialResponse > for CreateCredentialResponse {
+    fn from(response: CreatePublicKeyCredentialResponse) -> Self {
         CreateCredentialResponse {
             // TODO: Decide on camelCase or kebab-case for cred types
             r#type: "public-key".to_string(),
-            public_key: Some(self),
+            public_key: Some(response),
             password: None,
         }
     }
@@ -268,11 +268,11 @@ pub struct PublicKeyCredential {
     assertion_response_json: String,
 }
 
-impl Into<GetCredentialResponse> for PasswordCredential {
-    fn into(self) -> GetCredentialResponse {
+impl From<PasswordCredential> for GetCredentialResponse {
+    fn from(response: PasswordCredential) -> Self {
         GetCredentialResponse {
             r#type: "password".to_string(),
-            password: Some(self),
+            password: Some(response),
             public_key: None,
         }
     }

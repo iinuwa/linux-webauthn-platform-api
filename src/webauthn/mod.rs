@@ -1,14 +1,14 @@
 mod cbor;
 
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 
 use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use openssl::{pkey::PKey, rsa::Rsa};
 use ring::{
-    digest::{self, digest, SHA256},
+    digest::{self, digest},
     rand::SystemRandom,
     signature::{
-        self, EcdsaKeyPair, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm, Ed25519KeyPair,
+        EcdsaKeyPair, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm, Ed25519KeyPair,
         KeyPair, RsaKeyPair, VerificationAlgorithm, ECDSA_P256_SHA256_ASN1,
         ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256,
     },
@@ -18,19 +18,20 @@ use serde_json::json;
 use zbus::zvariant::{DeserializeDict, Type};
 
 use self::cbor::CborWriter;
-use crate::store::{lookup_stored_credentials, store_credential};
 
 static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
 // static RNG: &Box<dyn SecureRandom> = &Box::new(SystemRandom::new());
 
+const CAN_CREATE_DISCOVERABLE_CREDENTIAL: bool = true;
+
 #[derive(Debug)]
 pub enum Error {
-    UnknownError,
-    NotSupportedError,
-    InvalidStateError,
-    NotAllowedError,
-    ConstraintError,
-    InternalError(String),
+    Unknown,
+    NotSupported,
+    InvalidState,
+    NotAllowed,
+    Constraint,
+    Internal(String),
 }
 pub(crate) fn create_credential(
     origin: &str,
@@ -38,32 +39,32 @@ pub(crate) fn create_credential(
     same_origin: bool,
 ) -> Result<(CreatePublicKeyCredentialResponse, CredentialSource, User), Error> {
     let request_value = serde_json::from_str::<serde_json::Value>(options)
-        .map_err(|_| Error::InternalError("Invalid request JSON".to_string()))?;
+        .map_err(|_| Error::Internal("Invalid request JSON".to_string()))?;
     let json = request_value
         .as_object()
-        .ok_or_else(|| Error::InternalError("Invalid request JSON".to_string()))?;
+        .ok_or_else(|| Error::Internal("Invalid request JSON".to_string()))?;
     let challenge = json
         .get("challenge")
         .and_then(|c| c.as_str())
-        .ok_or_else(|| Error::InternalError("JSON missing `challenge` field".to_string()))?
+        .ok_or_else(|| Error::Internal("JSON missing `challenge` field".to_string()))?
         .to_owned();
     let rp = json
         .get("rp")
         .and_then(|val| serde_json::from_str::<RelyingParty>(&val.to_string()).ok())
-        .ok_or_else(|| Error::InternalError("JSON missing `rp` field".to_string()))?;
+        .ok_or_else(|| Error::Internal("JSON missing `rp` field".to_string()))?;
     let user = json
         .get("user")
-        .ok_or(Error::InternalError(
+        .ok_or(Error::Internal(
             "JSON missing `user` field".to_string(),
         ))
         .and_then(|val| {
-            serde_json::from_str::<User>(&val.to_string()).or_else(|e| {
+            serde_json::from_str::<User>(&val.to_string()).map_err(|e| {
                 let msg = format!("JSON missing `user` field: {e}");
-                return Err(Error::InternalError(msg));
+                Error::Internal(msg)
             })
         })?;
     let other_options = serde_json::from_str::<MakeCredentialOptions>(&request_value.to_string())
-        .map_err(|_| Error::InternalError("Invalid request JSON".to_string()))?;
+        .map_err(|_| Error::Internal("Invalid request JSON".to_string()))?;
     let (require_resident_key, require_user_verification) =
         if let Some(authenticator_selection) = other_options.authenticator_selection {
             let is_authenticator_storage_capable = true;
@@ -89,14 +90,14 @@ pub(crate) fn create_credential(
         .clone()
         .get("pubKeyCredParams")
         .ok_or_else(|| {
-            Error::InternalError(
+            Error::Internal(
                 "Request JSON missing or invalid `pubKeyCredParams` key".to_string(),
             )
         })
         .and_then(|val| {
             serde_json::from_str::<Vec<PublicKeyCredentialParameters>>(&val.to_string()).map_err(
                 |e| {
-                    Error::InternalError(format!(
+                    Error::Internal(format!(
                         "Request JSON missing or invalid `pubKeyCredParams` key: {e}"
                     ))
                 },
@@ -151,13 +152,13 @@ pub(crate) fn make_credential(
         .as_ref()
         .to_owned();
     if client_data_hash.len() != 32 {
-        return Err(Error::UnknownError);
+        return Err(Error::Unknown);
     }
     if rp_entity.id.is_empty() || rp_entity.name.is_empty() {
-        return Err(Error::UnknownError);
+        return Err(Error::Unknown);
     }
     if user_entity.id.is_empty() || user_entity.name.is_empty() {
-        return Err(Error::UnknownError);
+        return Err(Error::Unknown);
     }
 
     // Check if at least one of the specified combinations of PublicKeyCredentialType and cryptographic parameters in credTypesAndPubKeyAlgs is supported. If not, return an error code equivalent to "NotSupportedError" and terminate the operation.
@@ -166,7 +167,7 @@ pub(crate) fn make_credential(
         .find(|p| p.cred_type == "public-key" && supported_algorithms.contains(&p.alg))
     {
         Some(cred_pub_key_parameters) => cred_pub_key_parameters,
-        None => return Err(Error::NotSupportedError),
+        None => return Err(Error::NotSupported),
     };
 
     // For each descriptor of excludeCredentialDescriptorList:
@@ -177,18 +178,18 @@ pub(crate) fn make_credential(
         // authorization gesture confirming user consent for creating a new
         // credential. The authorization gesture MUST include a test of user
         // presence.
-        if let Some((found, rp)) = lookup_stored_credentials(cd.id.clone()) {
+        if let Some((found, rp)) = lookup_stored_credentials(&cd.id) {
             if rp.id == rp_entity.id && found.cred_type == cd.cred_type {
                 let has_consent: bool = ask_disclosure_consent();
                 // If the user confirms consent to create a new credential
                 if has_consent {
                     // return an error code equivalent to "InvalidStateError" and terminate the operation.
-                    return Err(Error::InvalidStateError);
+                    return Err(Error::InvalidState);
                 }
                 // does not consent to create a new credential
                 else {
                     // return an error code equivalent to "NotAllowedError" and terminate the operation.
-                    return Err(Error::NotAllowedError);
+                    return Err(Error::NotAllowed);
                 }
                 // Note: The purpose of this authorization gesture is not to proceed with creating a credential, but for privacy reasons to authorize disclosure of the fact that descriptor.id is bound to this authenticator. If the user consents, the client and Relying Party can detect this and guide the user to use a different authenticator. If the user does not consent, the authenticator does not reveal that descriptor.id is bound to it, and responds as if the user simply declined consent to create a credential.
             }
@@ -196,14 +197,13 @@ pub(crate) fn make_credential(
     }
 
     // If requireResidentKey is true and the authenticator cannot store a client-side discoverable public key credential source, return an error code equivalent to "ConstraintError" and terminate the operation.
-    const can_create_discoverable_credential: bool = true;
-    if require_resident_key && !can_create_discoverable_credential {
-        return Err(Error::ConstraintError);
+    if require_resident_key && !CAN_CREATE_DISCOVERABLE_CREDENTIAL {
+        return Err(Error::Constraint);
     }
 
     // If requireUserVerification is true and the authenticator cannot perform user verification, return an error code equivalent to "ConstraintError" and terminate the operation.
     if require_user_verification && !is_user_verification_available() {
-        return Err(Error::ConstraintError);
+        return Err(Error::Constraint);
     }
     // Collect an authorization gesture confirming user consent for creating a
     // new credential. The prompt for the authorization gesture is shown by the
@@ -215,7 +215,7 @@ pub(crate) fn make_credential(
     // If requireUserPresence is true, the authorization gesture MUST include a test of user presence.
     if collect_authorization_gesture(require_user_verification, require_user_presence).is_err() {
         // If the user does not consent or if user verification fails, return an error code equivalent to "NotAllowedError" and terminate the operation.
-        return Err(Error::NotAllowedError);
+        return Err(Error::NotAllowed);
     }
 
     // Once the authorization gesture has been completed and user consent has been obtained, generate a new credential object:
@@ -224,13 +224,13 @@ pub(crate) fn make_credential(
     // Let userHandle be userEntity.id.
     let user_handle = URL_SAFE_NO_PAD
         .decode(user_entity.id.clone())
-        .map_err(|_| Error::UnknownError)?;
+        .map_err(|_| Error::Unknown)?;
 
     // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
     // Let credentialId be a new credential id.
     // Note: We'll always create a discoverable credential, so generate a random credential ID.
     let credential_id: Vec<u8> = ring::rand::generate::<[u8; 16]>(&SystemRandom::new())
-        .map_err(|_e| Error::UnknownError)?
+        .map_err(|_e| Error::Unknown)?
         .expose()
         .into();
 
@@ -336,7 +336,11 @@ fn create_key_pair(alg: i64) -> Result<Vec<u8>, Error> {
         }
         _ => todo!("Unknown signature algorithm given pair generated"),
     };
-    key_pair.map_err(|_e| Error::UnknownError)
+    key_pair.map_err(|_e| Error::Unknown)
+}
+
+fn lookup_stored_credentials(id: &[u8]) -> Option<(CredentialDescriptor, RelyingParty)> {
+    todo!()
 }
 
 fn ask_disclosure_consent() -> bool {
@@ -382,7 +386,7 @@ fn sign_attestation(
             let _ = rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
             Ok(signature)
         }
-        _ => Err(Error::NotSupportedError),
+        _ => Err(Error::NotSupported),
     }
 }
 
@@ -393,7 +397,7 @@ fn create_attested_credential_data(
 ) -> Result<Vec<u8>, Error> {
     let mut attested_credential_data: Vec<u8> = Vec::new();
     if aaguid.len() != 16 {
-        return Err(Error::UnknownError);
+        return Err(Error::Unknown);
     }
     attested_credential_data.extend(aaguid);
     let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
@@ -454,7 +458,7 @@ fn cose_encode_public_key(
             let public_key = key_pair.public_key().as_ref();
             // ring outputs public keys with uncompressed 32-byte x and y coordinates
             if public_key.len() != 65 || public_key[0] != 0x04 {
-                return Err(Error::UnknownError);
+                return Err(Error::Unknown);
             }
             let (x, y) = public_key[1..].split_at(32);
             let mut cose_key: Vec<u8> = Vec::new();
@@ -471,7 +475,7 @@ fn cose_encode_public_key(
         -8 => {
             // TODO: Check this
             let key_pair =
-                Ed25519KeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::UnknownError)?;
+                Ed25519KeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::Unknown)?;
             let public_key = key_pair.public_key().as_ref();
             let mut cose_key: Vec<u8> = Vec::new();
             cose_key.push(0b101_00100); // map with 4 items
@@ -483,7 +487,7 @@ fn cose_encode_public_key(
             Ok(cose_key)
         }
         -257 => {
-            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::UnknownError)?;
+            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::Unknown)?;
             let public_key = key_pair.public_key().as_ref();
             // TODO: This is ASN.1 with DER encoding. We could parse this to extract
             // the modulus and exponent properly, but the key length will
@@ -630,7 +634,7 @@ pub(crate) struct TokenBinding {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub(crate) struct AssertionOptions {
-    user_verification: Option<bool>, //
+    user_verification: Option<bool>,
     user_presence: Option<bool>,
 }
 
@@ -649,7 +653,7 @@ pub(crate) struct MakeCredentialOptions {
     pub extension_data: Option<String>,
 }
 
-pub(crate) struct CredentialList(Vec<CredentialDescriptor>);
+// pub(crate) struct CredentialList(Vec<CredentialDescriptor>);
 
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]

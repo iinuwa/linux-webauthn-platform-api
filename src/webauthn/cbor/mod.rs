@@ -53,7 +53,7 @@ where
             self.writer.write_all(&d.to_be_bytes())?;
             Ok(())
         } else if num < 2u64.pow(64) {
-            let d: u64 = num.try_into().unwrap();
+            let d: u64 = num;
             self.writer.write_all(&[mask | 27])?;
             self.writer.write_all(&d.to_be_bytes())?;
             Ok(())
@@ -97,7 +97,7 @@ where
             MajorType::Float => 0b111_00000,
         };
 
-        let mut major_type_buf = vec![0; 9];
+        let mut major_type_buf = [0; 9];
         if len < 24 {
             let l: u8 = len.try_into().unwrap();
             self.writer.write_all(&[l | major_type_mask])?;
@@ -117,7 +117,7 @@ where
             major_type_buf[1..5].copy_from_slice(&l.to_be_bytes());
             self.writer.write_all(&major_type_buf[0..5])?;
         } else if len < 2u64.pow(64) {
-            let l: u64 = len.try_into().unwrap();
+            let l: u64 = len;
             major_type_buf[0] = 27u8 | major_type_mask;
             major_type_buf[1..9].copy_from_slice(&l.to_be_bytes());
             self.writer.write_all(&major_type_buf[0..9])?;
@@ -128,7 +128,7 @@ where
             ));
         }
         if let Some(data) = data {
-            self.writer.write(data)?;
+            self.writer.write_all(data)?;
         }
         Ok(())
     }
