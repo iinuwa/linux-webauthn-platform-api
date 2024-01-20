@@ -1,6 +1,6 @@
 mod cbor;
 
-use std::{time::Duration, borrow::Cow};
+use std::{borrow::Cow, time::Duration};
 
 use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use openssl::{pkey::PKey, rsa::Rsa};
@@ -8,16 +8,17 @@ use ring::{
     digest::{self, digest, SHA256},
     rand::SystemRandom,
     signature::{
-        EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, KeyPair, RsaKeyPair,
-        ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256, EcdsaVerificationAlgorithm, ECDSA_P256_SHA256_ASN1, self, VerificationAlgorithm,
+        self, EcdsaKeyPair, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm, Ed25519KeyPair,
+        KeyPair, RsaKeyPair, VerificationAlgorithm, ECDSA_P256_SHA256_ASN1,
+        ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256,
     },
 };
 use serde::Deserialize;
 use serde_json::json;
 use zbus::zvariant::{DeserializeDict, Type};
 
-use crate::store::{lookup_stored_credentials, store_credential};
 use self::cbor::CborWriter;
+use crate::store::{lookup_stored_credentials, store_credential};
 
 static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
 // static RNG: &Box<dyn SecureRandom> = &Box::new(SystemRandom::new());
@@ -31,23 +32,32 @@ pub enum Error {
     ConstraintError,
     InternalError(String),
 }
-pub(crate) fn create_credential(origin: &str, options: &str, same_origin: bool) -> Result<(CreatePublicKeyCredentialResponse, CredentialSource, User), Error> {
+pub(crate) fn create_credential(
+    origin: &str,
+    options: &str,
+    same_origin: bool,
+) -> Result<(CreatePublicKeyCredentialResponse, CredentialSource, User), Error> {
     let request_value = serde_json::from_str::<serde_json::Value>(options)
         .map_err(|_| Error::InternalError("Invalid request JSON".to_string()))?;
-    let json = request_value.as_object()
+    let json = request_value
+        .as_object()
         .ok_or_else(|| Error::InternalError("Invalid request JSON".to_string()))?;
-    let challenge = json.get("challenge")
+    let challenge = json
+        .get("challenge")
         .and_then(|c| c.as_str())
         .ok_or_else(|| Error::InternalError("JSON missing `challenge` field".to_string()))?
         .to_owned();
-    let rp = json.get("rp")
+    let rp = json
+        .get("rp")
         .and_then(|val| serde_json::from_str::<RelyingParty>(&val.to_string()).ok())
         .ok_or_else(|| Error::InternalError("JSON missing `rp` field".to_string()))?;
-    let user = json.get("user")
-        .ok_or(Error::InternalError("JSON missing `user` field".to_string()))
+    let user = json
+        .get("user")
+        .ok_or(Error::InternalError(
+            "JSON missing `user` field".to_string(),
+        ))
         .and_then(|val| {
-            serde_json::from_str::<User>(&val.to_string())
-            .or_else(|e| {
+            serde_json::from_str::<User>(&val.to_string()).or_else(|e| {
                 let msg = format!("JSON missing `user` field: {e}");
                 return Err(Error::InternalError(msg));
             })
@@ -63,11 +73,10 @@ pub(crate) fn create_credential(origin: &str, options: &str, same_origin: bool) 
             ); // fallback to authenticator_selection.require_resident_key == true for WebAuthn Level 1?
 
             let authenticator_can_verify_users = true;
-            let require_user_verification =
-                authenticator_selection.user_verification.map_or_else(
-                    || false,
-                    |r| r == "required" || (r == "preferred" && authenticator_can_verify_users),
-                );
+            let require_user_verification = authenticator_selection.user_verification.map_or_else(
+                || false,
+                |r| r == "required" || (r == "preferred" && authenticator_can_verify_users),
+            );
 
             (require_resident_key, require_user_verification)
         } else {
@@ -76,12 +85,23 @@ pub(crate) fn create_credential(origin: &str, options: &str, same_origin: bool) 
     let require_user_presence = true;
     let enterprise_attestation_possible = false;
     let extensions = None;
-    let credential_parameters = request_value.clone().get("pubKeyCredParams")
-        .ok_or_else(|| Error::InternalError("Request JSON missing or invalid `pubKeyCredParams` key".to_string()))
-        .and_then(|val| 
-            serde_json::from_str::<Vec<PublicKeyCredentialParameters>>(&val.to_string())
-            .map_err(|e| Error::InternalError(format!("Request JSON missing or invalid `pubKeyCredParams` key: {e}")))
-        )?;
+    let credential_parameters = request_value
+        .clone()
+        .get("pubKeyCredParams")
+        .ok_or_else(|| {
+            Error::InternalError(
+                "Request JSON missing or invalid `pubKeyCredParams` key".to_string(),
+            )
+        })
+        .and_then(|val| {
+            serde_json::from_str::<Vec<PublicKeyCredentialParameters>>(&val.to_string()).map_err(
+                |e| {
+                    Error::InternalError(format!(
+                        "Request JSON missing or invalid `pubKeyCredParams` key: {e}"
+                    ))
+                },
+            )
+        })?;
     let excluded_credentials = other_options.excluded_credentials.unwrap_or(Vec::new());
 
     super::webauthn::make_credential(
@@ -96,9 +116,9 @@ pub(crate) fn create_credential(origin: &str, options: &str, same_origin: bool) 
         credential_parameters,
         excluded_credentials,
         enterprise_attestation_possible,
-        extensions
-    ).map(|(response, cred_source)| (response, cred_source, user))
-
+        extensions,
+    )
+    .map(|(response, cred_source)| (response, cred_source, user))
 }
 
 pub(crate) fn make_credential(
@@ -127,10 +147,8 @@ pub(crate) fn make_credential(
     // Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code equivalent to "UnknownError" and terminate the operation.
     let cross_origin_str = if cross_origin { "true" } else { "false" };
     let client_data_json = format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":{cross_origin_str}}}");
-    let client_data_hash = digest::digest(
-        &digest::SHA256,
-        client_data_json.as_bytes()
-        ).as_ref()
+    let client_data_hash = digest::digest(&digest::SHA256, client_data_json.as_bytes())
+        .as_ref()
         .to_owned();
     if client_data_hash.len() != 32 {
         return Err(Error::UnknownError);
@@ -204,7 +222,8 @@ pub(crate) fn make_credential(
     // Let (publicKey, privateKey) be a new pair of cryptographic keys using the combination of PublicKeyCredentialType and cryptographic parameters represented by the first item in credTypesAndPubKeyAlgs that is supported by this authenticator.
     let key_pair = create_key_pair(cred_pub_key_parameters.alg)?;
     // Let userHandle be userEntity.id.
-    let user_handle = URL_SAFE_NO_PAD.decode(user_entity.id.clone())
+    let user_handle = URL_SAFE_NO_PAD
+        .decode(user_entity.id.clone())
         .map_err(|_| Error::UnknownError)?;
 
     // If requireResidentKey is true or the authenticator chooses to create a client-side discoverable public key credential source:
@@ -267,14 +286,24 @@ pub(crate) fn make_credential(
     // Let attestedCredentialData be the attested credential data byte array including the credentialId and publicKey.
     let aaguid = vec![0_u8; 16];
     let public_key = cose_encode_public_key(cred_pub_key_parameters, &key_pair)?;
-    let attested_credential_data = create_attested_credential_data(&credential_id, &public_key, &aaguid)?;
+    let attested_credential_data =
+        create_attested_credential_data(&credential_id, &public_key, &aaguid)?;
 
     // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data, including attestedCredentialData as the attestedCredentialData and processedExtensions, if any, as the extensions.
-    let authenticator_data = create_authenticator_data(&credential_source, signature_counter, &attested_credential_data);
+    let authenticator_data = create_authenticator_data(
+        &credential_source,
+        signature_counter,
+        &attested_credential_data,
+    );
 
     // Create an attestation object for the new credential using the procedure specified in § 6.5.4 Generating an Attestation Object, using an authenticator-chosen attestation statement format, authenticatorData, and hash, as well as taking into account the value of enterpriseAttestationPossible. For more details on attestation, see § 6.5 Attestation.
     // TODO: attestation not supported for now
-    let signature = sign_attestation(&authenticator_data, &client_data_hash, &key_pair, cred_pub_key_parameters)?;
+    let signature = sign_attestation(
+        &authenticator_data,
+        &client_data_hash,
+        &key_pair,
+        cred_pub_key_parameters,
+    )?;
     let attestation_object = create_attestation_object(
         cred_pub_key_parameters.alg,
         &authenticator_data,
@@ -289,7 +318,7 @@ pub(crate) fn make_credential(
         authenticator_data,
         client_data_json,
         None,
-        None
+        None,
     );
     Ok((response, credential_source))
 }
@@ -330,7 +359,12 @@ fn process_authenticator_extensions(_extensions: ()) -> Result<(), Error> {
     todo!();
 }
 
-fn sign_attestation(authenticator_data: &[u8], client_data_hash: &[u8], key_pair: &[u8], cred_pub_key_parameters: &PublicKeyCredentialParameters) -> Result<Vec<u8>, Error> {
+fn sign_attestation(
+    authenticator_data: &[u8],
+    client_data_hash: &[u8],
+    key_pair: &[u8],
+    cred_pub_key_parameters: &PublicKeyCredentialParameters,
+) -> Result<Vec<u8>, Error> {
     let signed_data: Vec<u8> = [authenticator_data, client_data_hash].concat();
     let rng = &SystemRandom::new();
     match cred_pub_key_parameters.alg {
@@ -352,9 +386,15 @@ fn sign_attestation(authenticator_data: &[u8], client_data_hash: &[u8], key_pair
     }
 }
 
-fn create_attested_credential_data(credential_id: &[u8], public_key: &[u8], aaguid: &[u8]) -> Result<Vec<u8>, Error> {
+fn create_attested_credential_data(
+    credential_id: &[u8],
+    public_key: &[u8],
+    aaguid: &[u8],
+) -> Result<Vec<u8>, Error> {
     let mut attested_credential_data: Vec<u8> = Vec::new();
-    if aaguid.len() != 16 { return Err(Error::UnknownError); }
+    if aaguid.len() != 16 {
+        return Err(Error::UnknownError);
+    }
     attested_credential_data.extend(aaguid);
     let cred_length: u16 = TryInto::<u16>::try_into(credential_id.len()).unwrap();
     let cred_length_bytes: Vec<u8> = cred_length.to_be_bytes().to_vec();
@@ -362,9 +402,12 @@ fn create_attested_credential_data(credential_id: &[u8], public_key: &[u8], aagu
     attested_credential_data.extend(credential_id);
     attested_credential_data.extend(public_key);
     Ok(attested_credential_data)
-
 }
-fn create_authenticator_data(credential_source: &CredentialSource, signature_counter: u32, attested_credential_data: &[u8]) -> Vec<u8> {
+fn create_authenticator_data(
+    credential_source: &CredentialSource,
+    signature_counter: u32,
+    attested_credential_data: &[u8],
+) -> Vec<u8> {
     let mut authenticator_data: Vec<u8> = Vec::new();
     let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.as_bytes());
     authenticator_data.extend(rp_id_hash.as_ref());
@@ -406,7 +449,8 @@ fn cose_encode_public_key(
 ) -> Result<Vec<u8>, Error> {
     match parameters.alg {
         -7 => {
-            let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8_key).unwrap();
+            let key_pair =
+                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8_key).unwrap();
             let public_key = key_pair.public_key().as_ref();
             // ring outputs public keys with uncompressed 32-byte x and y coordinates
             if public_key.len() != 65 || public_key[0] != 0x04 {
@@ -473,7 +517,11 @@ mod test {
         },
     };
 
-    use super::{cose_encode_public_key, create_attestation_object, create_attested_credential_data, create_authenticator_data, CredentialSource, PublicKeyCredentialType, PublicKeyCredentialParameters, P256, sign_attestation};
+    use super::{
+        cose_encode_public_key, create_attestation_object, create_attested_credential_data,
+        create_authenticator_data, sign_attestation, CredentialSource,
+        PublicKeyCredentialParameters, PublicKeyCredentialType, P256,
+    };
 
     #[test]
     fn test_rsa_key_pair() {
@@ -491,16 +539,27 @@ mod test {
     fn test_attestation() {
         let key_file = std::fs::read("private-key1.pk8").unwrap();
         let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
-        let key_parameters = PublicKeyCredentialParameters { alg: -7, cred_type: "public-key".to_string() };
+        let key_parameters = PublicKeyCredentialParameters {
+            alg: -7,
+            cred_type: "public-key".to_string(),
+        };
         let public_key = cose_encode_public_key(&key_parameters, &key_file).unwrap();
         let signature_counter = 1u32;
         let credential_id = [
-            0x92, 0x11, 0xb7, 0x6d, 0x8b, 0x19, 0xf9, 0x50, 0x6c, 0x2d, 0x75, 0x2f, 0x09, 0xc4, 0x3c, 0x5a,
-            0xeb, 0xf3, 0x36, 0xf6, 0xba, 0x89, 0x66, 0xdc, 0x6e, 0x71, 0x93, 0x52, 0x08, 0x72, 0x1d, 0x16
-        ].to_vec();
-        let aaguid = [01, 02, 03, 04, 05, 06, 07, 08, 01, 02, 03, 04, 05, 06, 07, 08,];
-        let attested_credential_data = create_attested_credential_data(&credential_id, &public_key, &aaguid).unwrap();
-        let user_handle = [0x64, 0x47, 0x56, 0x7a, 0x64, 0x47, 0x46, 0x69, 0x65, 0x6e, 0x6f,].to_vec();
+            0x92, 0x11, 0xb7, 0x6d, 0x8b, 0x19, 0xf9, 0x50, 0x6c, 0x2d, 0x75, 0x2f, 0x09, 0xc4,
+            0x3c, 0x5a, 0xeb, 0xf3, 0x36, 0xf6, 0xba, 0x89, 0x66, 0xdc, 0x6e, 0x71, 0x93, 0x52,
+            0x08, 0x72, 0x1d, 0x16,
+        ]
+        .to_vec();
+        let aaguid = [
+            01, 02, 03, 04, 05, 06, 07, 08, 01, 02, 03, 04, 05, 06, 07, 08,
+        ];
+        let attested_credential_data =
+            create_attested_credential_data(&credential_id, &public_key, &aaguid).unwrap();
+        let user_handle = [
+            0x64, 0x47, 0x56, 0x7a, 0x64, 0x47, 0x46, 0x69, 0x65, 0x6e, 0x6f,
+        ]
+        .to_vec();
         let credential_source = CredentialSource {
             cred_type: PublicKeyCredentialType::PublicKey,
             id: credential_id,
@@ -510,16 +569,27 @@ mod test {
             other_ui: None,
         };
 
-        let authenticator_data = create_authenticator_data(&credential_source, signature_counter, &attested_credential_data);
+        let authenticator_data = create_authenticator_data(
+            &credential_source,
+            signature_counter,
+            &attested_credential_data,
+        );
         let client_data_encoded = "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWWlReFY0VWhjZk9pUmZBdkF4bWpEakdhaUVXbkYtZ0ZFcWxndmdEaWsyakZiSGhoaVlxUGJqc0F5Q0FrbDlMUGQwRGRQaHNNb2luY0cxckV5cFlXUVEiLCJvcmlnaW4iOiJodHRwczovL3dlYmF1dGhuLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ";
         let client_data = URL_SAFE_NO_PAD.decode(client_data_encoded).unwrap();
         let client_data_hash = digest(&SHA256, &client_data).as_ref().to_vec();
-        let signature = sign_attestation(&authenticator_data, &client_data_hash, &key_file, &key_parameters).unwrap();
-        let attestation_object = create_attestation_object(key_parameters.alg, &authenticator_data, &signature, false).unwrap();
+        let signature = sign_attestation(
+            &authenticator_data,
+            &client_data_hash,
+            &key_file,
+            &key_parameters,
+        )
+        .unwrap();
+        let attestation_object =
+            create_attestation_object(key_parameters.alg, &authenticator_data, &signature, false)
+                .unwrap();
         let expected = std::fs::read("output.bin").unwrap();
         assert_eq!(expected, attestation_object);
     }
-
 }
 #[derive(Deserialize)]
 pub(crate) struct RelyingParty {
@@ -573,7 +643,7 @@ pub(crate) struct MakeCredentialOptions {
     #[serde(rename = "authenticatorSelection")]
     pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
     /// https://www.w3.org/TR/webauthn-3/#enum-attestation-convey
-    pub attestation: Option<String>, 
+    pub attestation: Option<String>,
     /// extensions input as a JSON object
     #[serde(rename = "extensionData")]
     pub extension_data: Option<String>,
@@ -685,11 +755,11 @@ pub struct CreatePublicKeyCredentialResponse {
 
     /// Raw bytes of credential ID
     raw_id: Vec<u8>,
-    
+
     response: AttestationResponse,
 
     /// JSON string of extension output
-    extensions: Option<String>
+    extensions: Option<String>,
 }
 
 /// Returned from a creation of a new public key credential.
@@ -700,10 +770,10 @@ pub struct AttestationResponse {
     /// Bytes containing authenticator data and an attestation statement.
     attestation_object: Vec<u8>,
 
-    /// Transports that the authenticator is believed to support, or an 
+    /// Transports that the authenticator is believed to support, or an
     /// empty sequence if the information is unavailable.
-    /// 
-    /// Should be one of 
+    ///
+    /// Should be one of
     /// - `usb`
     /// - `nfc`
     /// - `ble`
@@ -711,14 +781,21 @@ pub struct AttestationResponse {
     ///
     /// but others may be specified.
     transports: Vec<String>,
-    
+
     /// Encodes contextual bindings made by the authenticator. These bindings
     /// are controlled by the authenticator itself.
     authenticator_data: Vec<u8>,
 }
 
 impl CreatePublicKeyCredentialResponse {
-    pub fn new(id: Vec<u8>, attestation_object: Vec<u8>, authenticator_data: Vec<u8>, client_data_json: String, transports: Option<Vec<String>>, extension_output_json: Option<String>) -> Self {
+    pub fn new(
+        id: Vec<u8>,
+        attestation_object: Vec<u8>,
+        authenticator_data: Vec<u8>,
+        client_data_json: String,
+        transports: Option<Vec<String>>,
+        extension_output_json: Option<String>,
+    ) -> Self {
         Self {
             cred_type: "public-key".to_string(),
             raw_id: id,
@@ -728,7 +805,7 @@ impl CreatePublicKeyCredentialResponse {
                 transports: transports.unwrap_or_default(),
                 authenticator_data,
             },
-            extensions: extension_output_json
+            extensions: extension_output_json,
         }
     }
 
@@ -748,8 +825,12 @@ impl CreatePublicKeyCredentialResponse {
             "response": response
         });
         if let Some(extensions) = &self.extensions {
-            let extension_value = serde_json::from_str(extensions).expect("Extensions json to be formatted properly");
-            output.as_object_mut().unwrap().insert("clientExtensionResults".to_string(), extension_value);
+            let extension_value =
+                serde_json::from_str(extensions).expect("Extensions json to be formatted properly");
+            output
+                .as_object_mut()
+                .unwrap()
+                .insert("clientExtensionResults".to_string(), extension_value);
         }
         output.to_string()
     }

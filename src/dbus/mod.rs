@@ -1,7 +1,7 @@
-use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use zbus::zvariant::{DeserializeDict, SerializeDict};
-use zbus::{dbus_interface, fdo, Connection, ConnectionBuilder, Result, zvariant::Type};
+use zbus::{dbus_interface, fdo, zvariant::Type, Connection, ConnectionBuilder, Result};
 
 use crate::store;
 use crate::webauthn;
@@ -27,31 +27,55 @@ impl CredentialManager {
         &self,
         request: CreateCredentialRequest,
     ) -> fdo::Result<CreateCredentialResponse> {
-
-        let origin = "xyz.iinuwa.credentials.CredentialManager:local";
-        let response = match (request.r#type.as_ref(), request.password, request.public_key) {
-            ("password", Some(password_request), _ ) => {
-                let password_response = create_password(origin, password_request).await?;
+        let origin = request
+            .origin
+            .unwrap_or("xyz.iinuwa.credentials.CredentialManager:local".to_string());
+        let response = match (
+            request.r#type.as_ref(),
+            request.password,
+            request.public_key,
+        ) {
+            ("password", Some(password_request), _) => {
+                let password_response = create_password(&origin, password_request).await?;
                 Ok(password_response.into())
-            },
+            }
             ("publicKey", _, Some(passkey_request)) => {
-                let passkey_response = create_passkey(origin, passkey_request).await?;
+                let passkey_response = create_passkey(&origin, passkey_request).await?;
                 Ok(passkey_response.into())
             }
-            _ => Err(fdo::Error::Failed("Unknown credential request type".to_string())),
+            _ => Err(fdo::Error::Failed(
+                "Unknown credential request type".to_string(),
+            )),
         };
         response
     }
 
-    async fn get_credential(&self, request: GetCredentialRequest) -> fdo::Result<GetCredentialResponse> {
+    async fn get_credential(
+        &self,
+        request: GetCredentialRequest,
+    ) -> fdo::Result<GetCredentialResponse> {
         for option in request.options {
-            if option.password.is_some() {
-                if let Some((id, password)) = store::lookup_password_credentials(&request.origin).await {
-                    return Ok(PasswordCredential { id, password }.into())
+            match (option.r#type.as_ref(), option.password, option.public_key) {
+                ("password", Some(_), _) => {
+                    if let Some((id, password)) =
+                        store::lookup_password_credentials(&request.origin).await
+                    {
+                        return Ok(PasswordCredential { id, password }.into());
+                    }
+                }
+                ("publicKey", _, Some(_)) => {
+                    todo!("Get credential assertion")
+                }
+                _ => {
+                    return Err(fdo::Error::Failed(
+                        "Unknown credential request type".to_string(),
+                    ))
                 }
             }
         }
-        Err(fdo::Error::Failed("User cancelled or password not found".to_string()))
+        Err(fdo::Error::Failed(
+            "User cancelled or password not found".to_string(),
+        ))
     }
 
     #[dbus_interface(property)]
@@ -60,7 +84,10 @@ impl CredentialManager {
     }
 }
 
-async fn create_password(origin: &str, request: CreatePasswordCredentialRequest) -> fdo::Result<CreatePasswordCredentialResponse> {
+async fn create_password(
+    origin: &str,
+    request: CreatePasswordCredentialRequest,
+) -> fdo::Result<CreatePasswordCredentialResponse> {
     /*
     store::store_password(&request.origin, &request.id, &request.password).await
         .map(|_| CreatePasswordCredentialResponse{})
@@ -78,16 +105,21 @@ async fn create_password(origin: &str, request: CreatePasswordCredentialRequest)
         &request.id,
         "secret/password",
         None,
-        contents.as_bytes()
+        contents.as_bytes(),
     )
-        .await
-        .map_err(|_| fdo::Error::Failed("".to_string()))?;
+    .await
+    .map_err(|_| fdo::Error::Failed("".to_string()))?;
     Ok(CreatePasswordCredentialResponse {})
 }
 
-async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest) -> fdo::Result<CreatePublicKeyCredentialResponse> {
-    let (response, cred_source, user) = webauthn::create_credential(origin, &request.request_json, true)
-    .map_err(|_| fdo::Error::Failed("Failed to create public key credential".to_string()))?;
+async fn create_passkey(
+    origin: &str,
+    request: CreatePublicKeyCredentialRequest,
+) -> fdo::Result<CreatePublicKeyCredentialResponse> {
+    let (response, cred_source, user) =
+        webauthn::create_credential(origin, &request.request_json, true).map_err(|_| {
+            fdo::Error::Failed("Failed to create public key credential".to_string())
+        })?;
 
     let mut contents = String::new();
     contents.push_str("type=public-key"); // TODO: Don't hardcode public-key?
@@ -114,16 +146,20 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         &user.display_name,
         content_type,
         None,
-        contents.as_bytes()
-    ).await
+        contents.as_bytes(),
+    )
+    .await
     .map_err(|_| fdo::Error::Failed("Failed to save passkey to storage".to_string()))?;
 
-    Ok(CreatePublicKeyCredentialResponse { credential_creation_data_json: response.to_json() })
+    Ok(CreatePublicKeyCredentialResponse {
+        credential_creation_data_json: response.to_json(),
+    })
 }
 
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct CreateCredentialRequest {
+    origin: Option<String>,
     #[zvariant(rename = "type")]
     r#type: String,
     password: Option<CreatePasswordCredentialRequest>,
@@ -134,7 +170,6 @@ pub struct CreateCredentialRequest {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct CreatePasswordCredentialRequest {
-    origin: String,
     id: String,
     password: String,
 }
@@ -143,7 +178,6 @@ pub struct CreatePasswordCredentialRequest {
 #[zvariant(signature = "dict")]
 pub struct CreatePublicKeyCredentialRequest {
     request_json: String,
-    client_data_hash: Option<Vec<u8>>,
 }
 
 #[derive(SerializeDict, Type)]
@@ -186,7 +220,6 @@ impl Into<CreateCredentialResponse> for CreatePublicKeyCredentialResponse {
     }
 }
 
-
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct GetCredentialRequest {
@@ -200,8 +233,13 @@ pub struct GetCredentialOption {
     #[zvariant(rename = "type")]
     r#type: String,
     password: Option<GetPasswordRequestOption>,
-    // public_key: Option<GetPublicKeyRequestOption>,
-    
+    public_key: Option<GetPublicKeyRequestOption>,
+}
+
+#[derive(DeserializeDict, Type)]
+#[zvariant(signature = "dict")]
+pub struct GetPublicKeyRequestOption {
+    credential_assert_request_json: String,
 }
 
 #[derive(DeserializeDict, Type)]
@@ -213,8 +251,8 @@ pub struct GetPasswordRequestOption {}
 pub struct GetCredentialResponse {
     #[zvariant(rename = "type")]
     r#type: String,
-    password: PasswordCredential,
-    // public_key: PublicKeyCredential,
+    password: Option<PasswordCredential>,
+    public_key: Option<PublicKeyCredential>,
 }
 
 #[derive(SerializeDict, Type)]
@@ -224,21 +262,27 @@ pub struct PasswordCredential {
     password: String,
 }
 
+#[derive(SerializeDict, Type)]
+#[zvariant(signature = "dict")]
+pub struct PublicKeyCredential {
+    assertion_response_json: String,
+}
+
 impl Into<GetCredentialResponse> for PasswordCredential {
     fn into(self) -> GetCredentialResponse {
         GetCredentialResponse {
             r#type: "password".to_string(),
-            password: self,
+            password: Some(self),
+            public_key: None,
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
     use serde_json::json;
 
-    use super::{ create_passkey, CreatePublicKeyCredentialRequest };
+    use super::{create_passkey, CreatePublicKeyCredentialRequest};
     #[test]
     fn test_json() {
         super::store::initialize();
@@ -251,11 +295,9 @@ mod test {
                 {"type": "public-key", "alg": -257},
                 {"type": "public-key", "alg": -8}
             ]
-        }).to_string();
-        let request = CreatePublicKeyCredentialRequest {
-            request_json,
-            client_data_hash: None
-        };
+        })
+        .to_string();
+        let request = CreatePublicKeyCredentialRequest { request_json };
         let response = async_std::task::block_on(create_passkey("", request));
         if let Err(e) = &response {
             println!("{e}");
