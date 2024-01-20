@@ -97,11 +97,17 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         .and_then(|c| c.as_str())
         .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `challenge` field".to_string()))?
         .to_owned();
-    let rp = json.get("rp")
-        .and_then(|rp| serde_json::from_value::<RelyingParty>(rp.clone()).ok())
-        .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `rp` field".to_string()))?;
+    let rp = 
+    {
+        let rp_json = json.get("rp").unwrap().to_string();
+            println!("{rp_json}");
+            serde_json::from_str::<RelyingParty>(&rp_json).unwrap()
+    };
+        //.and_then(|rp| Some(.unwrap()))
+        //.unwrap();
+        //.ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `rp` field".to_string()))?;
     let user = json.get("user")
-        .and_then(|rp| serde_json::from_value::<User>(rp.clone()).ok())
+        .and_then(|rp| serde_json::from_str::<User>(&rp.to_string()).ok())
         .ok_or_else(|| fdo::Error::InvalidArgs("JSON missing `user` field".to_string()))?;
     let options = serde_json::from_value::<MakeCredentialOptions>(request_value.clone())
         .map_err(|_| fdo::Error::InvalidArgs("Invalid request JSON".to_string()))?;
@@ -151,6 +157,7 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         extensions
     ).await
     .map_err(|_| fdo::Error::Failed("Failed to create public key credential".to_string()))?;
+
     let mut contents = String::new();
     contents.push_str("type=public-key&"); // TODO: Don't hardcode public-key?
     contents.push_str("id=");
@@ -184,6 +191,7 @@ async fn create_passkey(origin: &str, request: CreatePublicKeyCredentialRequest)
         contents.as_bytes()
     ).await
     .map_err(|_| fdo::Error::Failed("Failed to save passkey to storage".to_string()))?;
+
     Ok(CreatePublicKeyCredentialResponse { credential_creation_data_json: response.to_json() })
 }
 
@@ -193,6 +201,7 @@ pub struct CreateCredentialRequest {
     #[zvariant(rename = "type")]
     r#type: String,
     password: Option<CreatePasswordCredentialRequest>,
+    #[zvariant(rename = "publicKey")]
     public_key: Option<CreatePublicKeyCredentialRequest>,
 }
 
@@ -294,5 +303,32 @@ impl Into<GetCredentialResponse> for PasswordCredential {
             r#type: "password".to_string(),
             password: self,
         }
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    use super::{ create_passkey, CreatePublicKeyCredentialRequest };
+    #[test]
+    fn test_json() {
+        let request_json = json!({
+            "challenge": "LcBRERr1VHJSTR3vtTG35w",
+            "rp": {"name": "Example Org", "id": "example.com"},
+            "user": {"id": "MTIzYWJkc2FjZGR3", "name": "user@example.com", "displayName": "User 1"},
+            "pubKeyCredParams": [
+                {"type": "public-key", "alg": -7},
+                {"type": "public-key", "alg": -257},
+                {"type": "public-key", "alg": -8}
+            ]
+        }).to_string();
+        let request = CreatePublicKeyCredentialRequest {
+            request_json,
+            client_data_hash: None
+        };
+        let response = async_std::task::block_on(create_passkey("", request));
+        assert_eq!(response.is_ok(), true);
     }
 }

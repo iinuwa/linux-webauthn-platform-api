@@ -8,6 +8,7 @@ from dbus_next import Variant
 
 
 async def run():
+    create_passkey(None)
     bus = await MessageBus().connect()
 
     with open('xyz.iinuwa.credentials.CredentialManager.xml', 'r') as f:
@@ -20,12 +21,13 @@ async def run():
     interface = proxy_object.get_interface(
         'xyz.iinuwa.credentials.CredentialManager1')
 
-    rsp = await create_password(interface)
+    rsp = await create_passkey(interface)
     print(rsp)
+    # rsp = await create_password(interface)
+    # print(rsp)
     rsp = await get_password(interface)
-    # rsp = await create_passkey(interface)
-    # await bus.wait_for_disconnect()
     print(rsp)
+    # await bus.wait_for_disconnect()
 
 
 async def create_password(interface):
@@ -61,6 +63,41 @@ async def get_password(interface):
 
 
 async def create_passkey(interface):
+    request = {
+        "challenge": base64.urlsafe_b64encode(secrets.token_bytes(16))
+                           .rstrip(b'=').decode('ascii'),
+        "rp": {
+            "name": "Example Org",
+            "id": "example.com",
+        },
+        "user": {
+            "id": base64.urlsafe_b64encode(b"123abdsacddw").rstrip(b'=').decode('ascii'),
+            "name": "user@example.com",
+            "displayName": "User 1",
+        },
+        "pubKeyCredParams": [
+            {"type": "public-key", "alg": -7},
+            {"type": "public-key", "alg": -257},
+            {"type": "public-key", "alg": -8},
+        ],
+    }
+    # client_data = {
+    #     "type": "webauthn.create",
+    #     "origin": "https://example.com",
+    # }
+    req_json = json.dumps(request)
+    print(req_json)
+    req = {
+        "type": Variant('s', "public-key"),
+        "publicKey": Variant('a{sv}', {
+            "request_json": Variant('s', req_json)
+        })
+    }
+    rsp = await interface.call_create_credential(req)
+    return rsp
+
+
+async def make_passkey(interface):
     rp = {
         "name": Variant('s', "example.com"),
         "id": Variant('s', "example.com"),

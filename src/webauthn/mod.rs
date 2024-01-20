@@ -1,6 +1,6 @@
 mod cbor;
 
-use std::time::Duration;
+use std::{time::Duration, borrow::Cow};
 
 use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use openssl::{pkey::PKey, rsa::Rsa};
@@ -442,11 +442,10 @@ mod test {
     }
 
 }
-#[derive(DeserializeDict, Type)]
-#[zvariant(signature = "dict")]
+#[derive(Deserialize)]
 pub(crate) struct RelyingParty {
-    name: String,
-    id: String,
+    pub name: String,
+    pub id: String,
 }
 
 /// https://www.w3.org/TR/webauthn-3/#dictionary-user-credential-params
@@ -455,6 +454,7 @@ pub(crate) struct RelyingParty {
 pub(crate) struct User {
     pub id: Vec<u8>,
     pub name: String,
+    #[zvariant(rename = "displayName")]
     pub display_name: String,
 }
 

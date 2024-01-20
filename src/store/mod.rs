@@ -82,7 +82,7 @@ pub(crate) async fn lookup_password_credentials(origin: &str) -> Option<(String,
             let credential = match File::open(cred_file.unwrap().path()) {
                 Ok(mut cred_file) => {
                     let mut cred = String::new();
-                    cred_file.read_to_string(&mut cred);
+                    cred_file.read_to_string(&mut cred).unwrap();
                     let mut password: Option<String> = None;
                     let mut id: Option<String> = None;
                     let mut origin_matches: bool = false;
