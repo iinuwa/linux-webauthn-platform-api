@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'linux-webauthn-platform-api'",
+            "name": "Debug executable 'backend'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=linux-webauthn-platform-api",
-                    "--package=linux-webauthn-platform-api"
+                    "--bin=backend",
+                    "--package=backend"
                 ],
                 "filter": {
-                    "name": "linux-webauthn-platform-api",
+                    "name": "backend",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,34 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'linux-webauthn-platform-api'",
+            "name": "Debug executable 'frontend'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=frontend",
+                    "--package=frontend"
+                ],
+                "filter": {
+                    "name": "frontend",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'frontend'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=linux-webauthn-platform-api",
-                    "--package=linux-webauthn-platform-api"
+                    "--bin=frontend",
+                    "--package=frontend"
                 ],
                 "filter": {
-                    "name": "linux-webauthn-platform-api",
+                    "name": "frontend",
                     "kind": "bin"
                 }
             },

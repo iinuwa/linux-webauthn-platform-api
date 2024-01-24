@@ -1,9 +1,17 @@
-use gtk::prelude::*;
-use gtk::{glib, Application, ApplicationWindow, Button};
+mod window;
 
-const APP_ID: &str = "org.gtk_rs.HelloWorld1";
+use gtk::gio;
+use gtk::glib;
+use gtk::prelude::*;
+use adw::Application;
+
+use window::Window;
+
+const APP_ID: &str = "xyz.iinuwa.CredentialManager1";
 
 fn main() -> glib::ExitCode {
+    gio::resources_register_include!("compiled.gresource").expect("Resource file to be compiled.");
+
     // Create a new application
     let app = Application::builder().application_id(APP_ID).build();
 
@@ -15,27 +23,8 @@ fn main() -> glib::ExitCode {
 }
 
 fn build_ui(app: &Application) {
-    // Create a button with label and margins
-    let button = Button::builder()
-        .label("Press me!")
-        .margin_top(12)
-        .margin_bottom(12)
-        .margin_start(12)
-        .margin_end(12)
-        .build();
-
-    // Connect to "clicked" signal of `button`
-    button.connect_clicked(|button| {
-        // Set the label to "Hello World!" after the button has been clicked on
-        button.set_label("Hello World!");
-    });
-
     // Create a window
-    let window = ApplicationWindow::builder()
-        .application(app)
-        .title("My GTK App")
-        .child(&button)
-        .build();
+    let window = Window::new(app);
 
     // Present window
     window.present();

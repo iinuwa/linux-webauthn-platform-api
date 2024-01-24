@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <template class="CredentialManagerWindow" parent="GtkApplicationWindow">
+    <property name="title">To-Do List</property>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <property name="margin-top">12</property>
+        <property name="margin-bottom">12</property>
+        <property name="margin-start">12</property>
+        <property name="margin-end">12</property>
+        <property name="spacing">6</property>
+        <child>
+          <object class="GtkCenterBox">
+            <property name="hexpand">true</property>
+            <property name="start-widget">
+              <object class="GtkLabel">
+                <attributes>
+                  <attribute name="weight" value="PANGO_WEIGHT_BOLD" />
+                </attributes>
+                <property name="label">Sign In</property>
+              </object>
+            </property>
+            <property name="end-widget">
+              <object class="GtkButton">
+                <property name="label">Cancel</property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkSeparator">
+            <property name="orientation">horizontal</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="orientation">vertical</property>
+            <property name="margin-top">12</property>
+            <property name="margin-bottom">12</property>
+            <property name="margin-start">12</property>
+            <property name="margin-end">12</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkImage">
+                <property name="icon-name">gcr-password</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="label">
+                  Enter your device PIN to continue.
+                </property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkPasswordEntry" />
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>
