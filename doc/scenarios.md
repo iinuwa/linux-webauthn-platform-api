@@ -116,6 +116,42 @@ sequenceDiagram
 1. backend sends ID back to frontend, which pulls the corresponding credential and sends back to client
 1. browser receives credentials, fills in username and password.
 
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant B as Backend
+    participant F as Frontend
+    participant C as Client
+    
+    
+    U->>C: Clicks "Clicks Create Passkey.."
+    C->>F: GetCredential([{type: password, origin}])
+    F->>B: GetCredential(credRequest)
+    B->>F: GetAuthToken()
+    F-->>B: return authToken
+    B->>U: Prompts for PIN/fingerprint
+    alt fingerprint
+        U->>B: Swipes fingerprint
+        F->>B: NotifyFingerprint({ cred })
+    else pin
+        U->>B: Enters PIN
+    end
+    B->>F: ValidateDeviceCredential(authToken, cred)
+    F-->>B: returns `session`
+    B->>F: GetCredentials(session)
+    F-->>B: returns `credentialList`
+    B->>U: Show credentials
+    U->>B: Create new credential
+    B->>F: CreateCredential({type: password, origin, username, password})
+    F-->>B: returns newCredentialId
+    B->>F: SelectCredential(session, id)
+    F-->>B: returns `completionToken`
+    destroy B
+    B->>F: CompleteTransaction(session, completionToken)
+    F->>C: returns `publicKeyCredential`
+    C->>U: Logs user in
+```
+
 # Scenario 4: Passkey, create-on-the-fly
 - not supported by WebAuthn yet
 
@@ -137,6 +173,44 @@ sequenceDiagram
 1. Backend completes assertion by sending ref back to frontend and closes the window
 1. frontend receives assertion ref
 1. frontend sends webauthn result to client
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant M as Machine
+    participant B as Backend
+    participant F as Frontend
+    participant C as Client
+    
+    
+    U->>C: Clicks "Clicks Create Passkey.."
+    C->>F: GetCredential([{type: publicKey, origin, publicKey: {...options}}])
+    F->>B: GetCredential(credRequest)
+    B->>F: GetAuthToken()
+    F-->>B: return authToken
+    B->>U: Prompts for PIN/fingerprint
+    U->>B: Clicks "other credentials"
+    B->>F: CancelAuth(authToken)
+    U->>B: Selects "USB security key"
+    B->>F: StartDeviceDiscovery([{type: usb}])
+    
+    F-->>M: Polls for FIDO USB devices
+    U->>M: Plugs in USB
+    M->>F: Notifies about USB device
+    F->>M: CTAPHID_* messages, ask for assertion
+    F-->>M: Poll for assertion
+    F->>B: NotifyDiscoveredDevice({type: usbPluggedIn, ...})
+    B->>U: Shows instruction "Activate security key"
+    B->>F: BlinkDevice(device)
+    F->>M: CTAPHID_WINK
+    U->>M: Activates security key
+    destroy M
+    M-->>F: Notifies FIDO activation/assertion
+    F-->>B: returns `completionToken`
+    destroy B
+    B->>F: CompleteTransaction(session, completionToken)
+    F->>C: returns `publicKeyCredential`
+    C->>U: Logs user in
+```
 
 # Scenario 6: Passkey, hybrid
 1. User opens a website with username and password field.
@@ -184,7 +258,7 @@ sequenceDiagram
 1. frontend receives assertion ref
 1. frontend sends webauthn result to client
 
-# Scenario 7: Passkey or public key, delegate to provider, without extra provider UI
+# Scenario 8: Passkey or public key, delegate to provider, without extra provider UI
 1. User opens a website with username and password field.
 1. autofill is not enabled
 1. User clicks passkey button (click 1)
