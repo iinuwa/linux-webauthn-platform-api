@@ -235,6 +235,44 @@ sequenceDiagram
 1. Backend tells user that the transaction is done, sends handle back to the Frontend
 1. frontend receives assertion ref
 1. frontend sends webauthn result to client
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant B as Backend
+    participant F as Frontend
+    participant M as Machine
+    participant D as Device
+    participant C as Client
+    
+    U->>C: Clicks "Clicks Create Passkey.."
+    C->>F: GetCredential([{type: publicKey, origin, publicKey: {...options}}])
+    F->>B: GetCredential(credRequest)
+    B->>F: GetAuthToken()
+    F-->>B: return authToken
+    B->>U: Prompts for PIN/fingerprint
+    U->>B: Clicks "other credentials"
+    B->>F: CancelAuth(authToken)
+    U->>B: Selects "Other device"
+    B->>F: StartDeviceDiscovery([{type: ctap-hybrid}])    
+    F-->>M: Polls for BLE devices
+    F-->>B: returns `qr_data`
+    B->>U: Displays QR code
+    U->>D: Scans QR code
+    D->>M: Sends BLE Advert
+    destroy M
+    M->>F: Notifies about BLE advert
+    F->>B: NotifyDiscoveredDevice({type: hybridConnected, ...})
+    B->>U: Shows "Connecting to your device"
+    F->>D: Send assertion options
+    U->>D: Consents to use passkey
+    destroy D
+    D->>F: Sends assertion data
+    F-->>B: returns `completionToken`
+    destroy B
+    B->>F: CompleteTransaction(session, completionToken)
+    F->>C: returns `publicKeyCredential`
+    C->>U: Logs user in
+```
 
 # Scenario 7: Password, delegate to provider
 1. User opens a website with username and password field.
@@ -257,6 +295,35 @@ sequenceDiagram
 1. Backend tells user that the transaction is done, sends handle back to the Frontend
 1. frontend receives assertion ref
 1. frontend sends webauthn result to client
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant P as Provider
+    participant B as Backend
+    participant F as Frontend
+    participant C as Client
+    
+    U->>C: Clicks "Clicks Create Passkey.."
+    C->>F: GetCredential([{type: password, origin}])
+    F->>B: GetCredential(credRequest)
+    B->>F: GetAuthToken()
+    F-->>B: return authToken
+    B->>U: Prompts for PIN/fingerprint
+    U->>B: Clicks "other credentials"
+    B->>F: CancelAuth(authToken)
+    U->>B: Selects "Your Password Provider"
+    B->>F: LaunchProvider(id)
+    F->>P: Sends launch request
+    P->>U: Provider shows credentials
+    U->>P: User chooses credentials
+    destroy P
+    P->>F: SendPassword
+    F-->>B: returns `completionToken`
+    destroy B
+    B->>F: CompleteTransaction(session, completionToken)
+    F->>C: returns `password`
+    C->>U: Logs user in
+```
 
 # Scenario 8: Passkey or public key, delegate to provider, without extra provider UI
 1. User opens a website with username and password field.
@@ -278,3 +345,6 @@ sequenceDiagram
 1. Backend tells user that the transaction is done, sends handle back to the Frontend
 1. frontend receives assertion ref
 1. frontend sends webauthn result to client
+```mermaid
+
+```
