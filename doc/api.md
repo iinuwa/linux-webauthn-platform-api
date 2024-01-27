@@ -137,6 +137,17 @@ Returns an opaque `Session` object to be used in subsequent parts of the flow.
 
 Returns metadata for the credentials that the client knows about, filtered by the credential as appropriate.
 
+The frontend MAY return credentials that do not match the origin given in the
+`GetCredential()` backend caller SHOULD filter and sort the credentials
+according to the request origin to prevent the user from phishing attacks. 
+
+Ultimately, the user can decide if they want to use a particular—for example,
+if a password is shared between multiple sites, but they have not associated the
+credential with multiple origins yet—so the frontend MAY allow the user to view more credentials that do not match. (With passkeys, the request origin is
+signed by the passkey, and the RP is responsible to check that the origin is
+valid, so there is some protection against phishing, even if the wrong passkey
+is chosen for the given request origin.)
+
 `CredentialMetadata`
 
     id: String. ID of credential, to be used in `SelectCredential()`
