@@ -346,5 +346,41 @@ sequenceDiagram
 1. frontend receives assertion ref
 1. frontend sends webauthn result to client
 ```mermaid
-
+sequenceDiagram
+    actor U as User
+    participant P as Provider
+    participant B as Backend
+    participant F as Frontend
+    participant C as Client
+    
+    U->>C: Clicks "Clicks Create Passkey.."
+    C->>F: GetCredential([{type: password, origin}])
+    F->>P: SearchCredentials(credRequest)
+    P-->>F: return matching credentials
+    F->>B: GetCredential(credRequest)
+    B->>F: GetAuthToken()
+    F-->>B: return authToken
+    B->>U: Prompts for PIN/fingerprint
+    alt fingerprint
+        U->>B: Swipes fingerprint
+        F->>B: NotifyFingerprint({ cred })
+    else pin
+        U->>B: Enters PIN
+    end
+    B->>F: ValidateDeviceCredential(authToken, cred)
+    F-->>B: returns `session`
+    B->>F: GetCredentials(session)
+    F-->>B: returns `credentialList`, including provider credentials
+    B->>U: Show credentials
+    U->>B: Select credential from Provider
+    B->>+F: SelectCredential(session, id)
+    F->>P: GetCredential(credRequest, id)
+    P-->>P: SignAssertion()
+    destroy P
+    P-->>F: return assertion
+    F-->>-B: returns `completionToken`
+    destroy B
+    B->>F: CompleteTransaction(session, completionToken)
+    F->>C: returns `assertion`
+    C->>U: Logs user in
 ```
