@@ -152,7 +152,7 @@ async fn create_passkey(
     .map_err(|_| fdo::Error::Failed("Failed to save passkey to storage".to_string()))?;
 
     Ok(CreatePublicKeyCredentialResponse {
-        credential_creation_data_json: response.to_json(),
+        request_json: response.to_json(),
     })
 }
 
@@ -206,7 +206,7 @@ impl From<CreatePasswordCredentialResponse> for CreateCredentialResponse{
 #[derive(SerializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct CreatePublicKeyCredentialResponse {
-    credential_creation_data_json: String,
+    request_json: String,
 }
 
 impl From<CreatePublicKeyCredentialResponse > for CreateCredentialResponse {
@@ -239,7 +239,7 @@ pub struct GetCredentialOption {
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct GetPublicKeyRequestOption {
-    credential_assert_request_json: String,
+    request_json: String,
 }
 
 #[derive(DeserializeDict, Type)]
