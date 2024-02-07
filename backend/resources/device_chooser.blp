@@ -1,0 +1,55 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CredentialManagerDeviceChooser : Box {
+  orientation: vertical;
+  margin-top: 12;
+  margin-bottom: 12;
+  margin-start: 36;
+  margin-end: 36;
+  spacing: 6;
+
+  Box {
+    orientation: vertical;
+
+    Label {
+      label: "Where do you want to save this credential?";
+    }
+  }
+
+  Button {
+    clicked => $handle_device_selected();
+
+    Adw.ButtonContent {
+      icon-name: "computer-symbolic";
+      label: "This device";
+    }
+  }
+
+  Button {
+    clicked => $handle_device_selected();
+
+    Adw.ButtonContent {
+      icon-name: "phone-symbolic";
+      label: "A mobile device";
+    }
+  }
+
+  Button {
+    clicked => $handle_device_selected();
+
+    Adw.ButtonContent {
+      icon-name: "phone-symbolic";
+      label: "Pixel 7";
+    }
+  }
+
+  Button {
+    clicked => $handle_device_selected();
+
+    Adw.ButtonContent {
+      icon-name: "media-removable-symbolic";
+      label: "A security key";
+    }
+  }
+}

@@ -1,0 +1,56 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $CredentialManagerWindow : ApplicationWindow {
+  title: "To-Do List";
+
+  Box {
+    orientation: vertical;
+    margin-top: 12;
+    margin-bottom: 12;
+    margin-start: 12;
+    margin-end: 12;
+    spacing: 6;
+
+    CenterBox {
+      hexpand: true;
+      start-widget: 
+      Label {
+        label: "Sign In";
+        styles ["title"]
+      }
+
+      ;
+      end-widget: 
+      Button cancel_button {
+        clicked => $handle_cancel_button_clicked();
+        label: "Cancel";
+      }
+
+      ;
+    }
+
+    Separator {
+      orientation: horizontal;
+    }
+
+    Adw.NavigationView {
+      Adw.NavigationPage {
+        title: _("Choose device");
+        child: 
+        Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+          }
+          content: 
+          $CredentialManagerDeviceChooser device_chooser {
+          }
+
+          ;
+        }
+
+        ;
+      }
+    }
+  }
+}
