@@ -1,10 +1,10 @@
-mod window;
 mod views;
+mod window;
 
+use adw::Application;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
-use adw::Application;
 
 use window::Window;
 

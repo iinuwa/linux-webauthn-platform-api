@@ -20,7 +20,9 @@ pub struct Window {
 impl Window {
     #[template_callback]
     fn handle_cancel_button_clicked(button: &Button) {
-        button.activate_action("window.close", None).expect("window to close");
+        button
+            .activate_action("window.close", None)
+            .expect("window to close");
     }
 }
 #[glib::object_subclass]
@@ -49,7 +51,6 @@ impl ObjectImpl for Window {
         // obj.setup_callbacks();
         // obj.setup_factory();
     }
-
 }
 
 // Trait shared by all widgets

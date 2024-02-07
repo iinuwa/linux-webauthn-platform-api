@@ -15,3 +15,9 @@ impl DeviceChooser {
         Object::new()
     }
 }
+
+impl Default for DeviceChooser {
+    fn default() -> Self {
+        Self::new()
+    }
+}

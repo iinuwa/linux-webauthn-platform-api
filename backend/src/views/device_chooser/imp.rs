@@ -1,13 +1,12 @@
-use adw::ffi::AdwButtonContent;
-use gtk::glib::{self, GString};
 use gtk::glib::subclass::InitializingObject;
+use gtk::glib::{self, GString};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{Button, CompositeTemplate};
 
 #[derive(CompositeTemplate, Default)]
 #[template(resource = "/xyz/iinuwa/CredentialManager/device_chooser.ui")]
-pub struct DeviceChooser { }
+pub struct DeviceChooser {}
 
 #[glib::object_subclass]
 impl ObjectSubclass for DeviceChooser {
@@ -29,12 +28,11 @@ impl ObjectSubclass for DeviceChooser {
 impl DeviceChooser {
     #[template_callback]
     fn handle_device_selected(button: &Button) {
-        let content =
-            button
-                .child()
-                .expect("child to exist")
-                .property::<GString>("label")
-                .to_string();
+        let content = button
+            .child()
+            .expect("child to exist")
+            .property::<GString>("label")
+            .to_string();
         println!("{}", content);
     }
 }
@@ -49,7 +47,6 @@ impl ObjectImpl for DeviceChooser {
         // obj.setup_callbacks();
         // obj.setup_factory();
     }
-
 }
 
 // Trait shared by all widgets

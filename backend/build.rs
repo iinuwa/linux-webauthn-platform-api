@@ -1,9 +1,8 @@
-use std::path::PathBuf;
-use std::process::Command;
 use std::env;
 use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 fn main() {
-    
     let mut paths = Vec::new();
     for entry in fs::read_dir("resources").unwrap() {
         let entry = entry.unwrap();
@@ -21,7 +20,15 @@ fn main() {
     let resources_path = &out_dir.join("resources");
 
     let blueprint_files = paths.iter().map(|p| p.as_ref()).collect();
-    let args = [vec!["batch-compile", resources_path.to_str().unwrap(), "resources"], blueprint_files].concat();
+    let args = [
+        vec![
+            "batch-compile",
+            resources_path.to_str().unwrap(),
+            "resources",
+        ],
+        blueprint_files,
+    ]
+    .concat();
     Command::new("blueprint-compiler")
         .args(args)
         .output()
@@ -33,7 +40,7 @@ fn main() {
 
     glib_build_tools::compile_resources(
         &[resources_path],
-        &resource_file.to_str().unwrap(),
+        resource_file.to_str().unwrap(),
         "compiled.gresource",
     );
 }
