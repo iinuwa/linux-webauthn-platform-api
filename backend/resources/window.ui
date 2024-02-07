@@ -15,9 +15,11 @@
             <property name="hexpand">true</property>
             <property name="start-widget">
               <object class="GtkLabel">
+                <!--
                 <attributes>
                   <attribute name="weight" value="PANGO_WEIGHT_BOLD" />
                 </attributes>
+                -->
                 <property name="label">Sign In</property>
               </object>
             </property>
@@ -36,33 +38,35 @@
         </child>
         <child>
           <!-- TODO: Replace with AdwNavigationView -->
-          <object class="CredentialManagerDeviceChooser" id="device_chooser">
-          </object>
-          <!--
-          <object class="GtkBox">
-            <property name="orientation">vertical</property>
-            <property name="margin-top">12</property>
-            <property name="margin-bottom">12</property>
-            <property name="margin-start">12</property>
-            <property name="margin-end">12</property>
-            <property name="spacing">6</property>
+          <object class="AdwNavigationView">
             <child>
-              <object class="GtkImage">
-                <property name="icon-name">gcr-password</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkLabel">
-                <property name="label">
-                  Enter your device PIN to continue.
+              <object class="AdwNavigationPage">
+                <property name="title" translatable="yes">Choose device</property>
+                <property name="child">
+                  <object class="AdwToolbarView">
+                    <child type="top">
+                      <object class="AdwHeaderBar"/>
+                    </child>
+                    <property name="content">
+                      <object class="CredentialManagerDeviceChooser" id="device_chooser"/>
+                      <!--
+                      <object class="GtkButton">
+                        <property name="label" translatable="yes">Open Page 2</property>
+                        <property name="halign">center</property>
+                        <property name="valign">center</property>
+                        <property name="action-name">navigation.push</property>
+                        <property name="action-target">'page-2'</property>
+                        <style>
+                          <class name="pill"/>
+                        </style>
+                      </object>
+                      -->
+                    </property>
+                  </object>
                 </property>
               </object>
             </child>
-            <child>
-              <object class="GtkPasswordEntry" />
-            </child>
           </object>
-        -->
         </child>
       </object>
     </child>
