@@ -1,4 +1,5 @@
 mod window;
+mod views;
 
 use gtk::gio;
 use gtk::glib;

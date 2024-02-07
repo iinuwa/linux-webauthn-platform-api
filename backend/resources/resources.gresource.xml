@@ -3,4 +3,7 @@
   <gresource prefix="/xyz/iinuwa/CredentialManager/">
     <file compressed="true" preprocess="xml-stripblanks">window.ui</file>
   </gresource>
+  <gresource prefix="/xyz/iinuwa/CredentialManager/">
+    <file compressed="true" preprocess="xml-stripblanks">device_chooser.ui</file>
+  </gresource>
 </gresources>

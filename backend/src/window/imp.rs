@@ -1,12 +1,28 @@
 use gtk::glib;
 use gtk::glib::subclass::InitializingObject;
+use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
+use gtk::{Button, CompositeTemplate};
+
+use crate::views::device_chooser::DeviceChooser;
 
 #[derive(CompositeTemplate, Default)]
 #[template(resource = "/xyz/iinuwa/CredentialManager/window.ui")]
-pub struct Window {}
+pub struct Window {
+    #[template_child]
+    pub cancel_button: TemplateChild<Button>,
 
+    #[template_child]
+    pub device_chooser: TemplateChild<DeviceChooser>,
+}
+
+#[gtk::template_callbacks]
+impl Window {
+    #[template_callback]
+    fn handle_cancel_button_clicked(button: &Button) {
+        button.activate_action("window.close", None).expect("window to close");
+    }
+}
 #[glib::object_subclass]
 impl ObjectSubclass for Window {
     const NAME: &'static str = "CredentialManagerWindow";
@@ -15,7 +31,7 @@ impl ObjectSubclass for Window {
 
     fn class_init(klass: &mut Self::Class) {
         klass.bind_template();
-        // klass.bind_template_callbacks();
+        klass.bind_template_callbacks();
     }
 
     fn instance_init(obj: &InitializingObject<Self>) {
@@ -33,6 +49,7 @@ impl ObjectImpl for Window {
         // obj.setup_callbacks();
         // obj.setup_factory();
     }
+
 }
 
 // Trait shared by all widgets
