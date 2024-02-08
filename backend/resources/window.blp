@@ -37,20 +37,90 @@ template $CredentialManagerWindow : ApplicationWindow {
     Adw.NavigationView {
       Adw.NavigationPage {
         title: _("Choose device");
-        child: 
-        Adw.ToolbarView {
+        child: Box {
+          orientation: vertical;
           [top]
           Adw.HeaderBar {
-          }
-          content: 
-          $CredentialManagerDeviceChooser device_chooser {
+            show-end-title-buttons: false;
           }
 
-          ;
-        }
+          $CredentialManagerDeviceChooser device_chooser { }
 
-        ;
+        };
       }
+
+      Adw.NavigationPage {
+        title: _("<Internal authenticator>");
+        tag: "internal-authenticator-start";
+        child: Box {
+          orientation: vertical;
+          [top]
+          Adw.HeaderBar {
+            show-end-title-buttons: false;
+          }
+
+          Label {
+            label: _("Enter your device PIN");
+          }
+        };
+      }
+
+      Adw.NavigationPage {
+        title: _("Use Mobile Device");
+        tag: "qr-start";
+        child: Box {
+          orientation: vertical;
+          [top]
+          Adw.HeaderBar {
+            show-end-title-buttons: false;
+          }
+
+          Label {
+            label: _("Scan the QR code below with your mobile device");
+          }
+        };
+      }
+
+      Adw.NavigationPage {
+        title: _("Use Linked Device");
+        tag: "linked-start";
+        child: Box {
+          orientation: vertical;
+          [top]
+          Adw.HeaderBar {
+            show-end-title-buttons: false;
+          }
+
+          Spinner {
+            spinning: true;
+          }
+
+          Label {
+            label: _("Connecting to your device...");
+          }
+        };
+      }
+
+      Adw.NavigationPage {
+        title: _("Use Security Key");
+        tag: "security-key-start";
+        child: Box {
+          orientation: vertical;
+          [top]
+          Adw.HeaderBar {
+            show-end-title-buttons: false;
+          }
+
+          Spinner {
+            spinning: true;
+          }
+
+          Label {
+            label: _("Insert your security key");
+          }
+        };
+      }
+
     }
   }
 }

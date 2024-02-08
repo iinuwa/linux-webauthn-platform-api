@@ -18,7 +18,7 @@ template $CredentialManagerDeviceChooser : Box {
   }
 
   Button {
-    clicked => $handle_device_selected();
+    clicked => $handle_internal_authenticator_selected();
 
     Adw.ButtonContent {
       icon-name: "computer-symbolic";
@@ -27,7 +27,7 @@ template $CredentialManagerDeviceChooser : Box {
   }
 
   Button {
-    clicked => $handle_device_selected();
+    clicked => $handle_hybrid_qr_selected();
 
     Adw.ButtonContent {
       icon-name: "phone-symbolic";
@@ -36,7 +36,8 @@ template $CredentialManagerDeviceChooser : Box {
   }
 
   Button {
-    clicked => $handle_device_selected();
+    clicked => $handle_hybrid_linked_device_selected();
+    name: "pixel-7";
 
     Adw.ButtonContent {
       icon-name: "phone-symbolic";
@@ -45,7 +46,7 @@ template $CredentialManagerDeviceChooser : Box {
   }
 
   Button {
-    clicked => $handle_device_selected();
+    clicked => $handle_security_key_selected();
 
     Adw.ButtonContent {
       icon-name: "media-removable-symbolic";

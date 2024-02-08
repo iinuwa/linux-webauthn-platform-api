@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use gtk::glib::subclass::InitializingObject;
-use gtk::glib::{self, GString};
+use gtk::glib::{self, Variant};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{Button, CompositeTemplate};
@@ -27,13 +29,35 @@ impl ObjectSubclass for DeviceChooser {
 #[gtk::template_callbacks]
 impl DeviceChooser {
     #[template_callback]
-    fn handle_device_selected(button: &Button) {
-        let content = button
-            .child()
-            .expect("child to exist")
-            .property::<GString>("label")
-            .to_string();
-        println!("{}", content);
+    fn handle_internal_authenticator_selected(button: &Button) {
+        let target = Variant::from_str("'internal-authenticator-start'").expect("from_str to work");
+        button
+            .activate_action("navigation.push", Some(&target))
+            .expect("The action to exist");
+    }
+
+    #[template_callback]
+    fn handle_hybrid_qr_selected(button: &Button) {
+        let target = Variant::from_str("'qr-start'").expect("from_str to work");
+        button
+            .activate_action("navigation.push", Some(&target))
+            .expect("The action to exist");
+    }
+
+    #[template_callback]
+    fn handle_hybrid_linked_device_selected(button: &Button) {
+        let target = Variant::from_str("'linked-start'").expect("from_str to work");
+        button
+            .activate_action("navigation.push", Some(&target))
+            .expect("The action to exist");
+    }
+
+    #[template_callback]
+    fn handle_security_key_selected(button: &Button) {
+        let target = Variant::from_str("'security-key-start'").expect("from_str to work");
+        button
+            .activate_action("navigation.push", Some(&target))
+            .expect("The action to exist");
     }
 }
 
