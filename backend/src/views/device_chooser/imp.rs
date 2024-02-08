@@ -1,14 +1,21 @@
+use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::str::FromStr;
 
+use gtk::gio;
 use gtk::glib::subclass::InitializingObject;
-use gtk::glib::{self, Variant};
+use gtk::glib::{self, clone, Variant};
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{Button, CompositeTemplate};
 
+use crate::portal::frontend::{self, Device};
+
 #[derive(CompositeTemplate, Default)]
 #[template(resource = "/xyz/iinuwa/CredentialManager/device_chooser.ui")]
-pub struct DeviceChooser {}
+pub struct DeviceChooser {
+    transports: RefCell<Vec<Device>>,
+}
 
 #[glib::object_subclass]
 impl ObjectSubclass for DeviceChooser {
@@ -70,6 +77,11 @@ impl ObjectImpl for DeviceChooser {
         // obj.setup_tasks();
         // obj.setup_callbacks();
         // obj.setup_factory();
+
+        let transports = self.transports;
+        glib::spawn_future_local(clone!(@weak transports =>  async move {
+            transports.borrow() = frontend::get_available_devices().await;
+        }));
     }
 }
 
