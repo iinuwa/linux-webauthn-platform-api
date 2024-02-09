@@ -1,10 +1,10 @@
 use std::cell::RefCell;
 
 use adw::NavigationPage;
-use gtk::{glib, Picture};
 use gtk::glib::subclass::InitializingObject;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use gtk::{glib, Picture};
 use gtk::{Button, CompositeTemplate};
 
 use crate::portal::frontend::Device;

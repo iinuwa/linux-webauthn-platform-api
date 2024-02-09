@@ -80,6 +80,10 @@ template $CredentialManagerWindow : ApplicationWindow {
             label: _("Scan the QR code below with your mobile device");
           }
           Picture qr_code_img {}
+
+          Spinner {
+            visible: false;
+          }
         };
       }
 
