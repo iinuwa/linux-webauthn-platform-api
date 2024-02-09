@@ -11,16 +11,17 @@ use gtk::gdk::Texture;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{self, Cancellable, MemoryInputStream};
 use gtk::glib::{self, clone, Bytes, Object, Variant};
+use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{Box, Button, Label, Picture, Spinner};
-use gtk::prelude::*;
 use qrcode::render::svg;
 use qrcode::QrCode;
 
 use crate::portal::frontend::{
-    self, cancel_device_discovery_hybrid_qr, cancel_device_discovery_usb, poll_device_discovery_usb, start_device_discovery_hybrid_qr, start_device_discovery_usb, HybridQrPollResponse, UsbPollResponse
+    self, cancel_device_discovery_hybrid, cancel_device_discovery_usb, poll_device_discovery_usb,
+    start_device_discovery_hybrid, start_device_discovery_usb, HybridPollResponse, UsbPollResponse,
 };
-use crate::portal::frontend::{poll_device_discovery_hybrid_qr, DeviceTransport};
+use crate::portal::frontend::{poll_device_discovery_hybrid, DeviceTransport};
 
 glib::wrapper! {
     pub struct Window(ObjectSubclass<imp::Window>)
@@ -87,9 +88,11 @@ impl Window {
                         .build()
                 };
 
+                let name = name.unwrap_or("").to_owned();
                 let button = Button::builder().child(&content).build();
                 button.connect_clicked(clone!(@weak self as window => move |button| {
                     let t = Variant::from_str(target).expect("from_str to work");
+                    // let name = name.unwrap().to_string().clone();
                     match target {
                         "'qr-start'" => {
                             let picture = window.imp().qr_code_img.get();
@@ -99,6 +102,11 @@ impl Window {
                             let usb_page = window.imp().usb_page.get();
                             start_usb_flow(&usb_page);
                         }
+                        "'linked-start'" => {
+                            // TODO: Maybe the hybrid ones can share a page
+                            let linked_page = window.imp().linked_device_page.get();
+                            start_linked_device_flow(&linked_page, name.clone());
+                        },
                         _ => {},
                     }
                     button.activate_action("navigation.push", Some(&t))
@@ -111,14 +119,21 @@ impl Window {
 }
 
 fn start_qr_flow(picture: &Picture) {
-    let (mut request, qr_data) = start_device_discovery_hybrid_qr().unwrap();
-    let qr_code = QrCode::new(qr_data).expect("QR code to be valid");
-    let svg_xml = qr_code.render::<svg::Color>().build();
-    let stream = MemoryInputStream::from_bytes(&Bytes::from(svg_xml.as_bytes()));
-    let pixbuf = Pixbuf::from_stream_at_scale(&stream, 450, 450, true, None::<&Cancellable>)
-        .expect("SVG to render");
-    let texture = Texture::for_pixbuf(&pixbuf);
-    picture.set_paintable(Some(&texture));
+    let (mut request, qr_data) = start_device_discovery_hybrid(None).unwrap();
+    if let Some(qr_data) = qr_data {
+        let qr_code = QrCode::new(qr_data).expect("QR code to be valid");
+        let svg_xml = qr_code.render::<svg::Color>().build();
+        let stream = MemoryInputStream::from_bytes(&Bytes::from(svg_xml.as_bytes()));
+        let pixbuf = Pixbuf::from_stream_at_scale(&stream, 450, 450, true, None::<&Cancellable>)
+            .expect("SVG to render");
+        let texture = Texture::for_pixbuf(&pixbuf);
+        picture.set_paintable(Some(&texture));
+    } else {
+        // TODO: Error handling
+        println!("backend: Failed to get QR data to start flow");
+        return;
+    }
+
     picture
         .prev_sibling()
         .and_downcast_ref::<Label>()
@@ -133,29 +148,29 @@ fn start_qr_flow(picture: &Picture) {
         .expect("parent to be a NavigationPage")
         .connect_hiding(move |_| {
             if !s1.is_closed() {
-                s1.send_blocking(HybridQrPollResponse::UserCancelled)
+                s1.send_blocking(HybridPollResponse::UserCancelled)
                     .expect("channel to be open");
-                cancel_device_discovery_hybrid_qr(&request);
+                cancel_device_discovery_hybrid(&request);
             }
         });
     gio::spawn_blocking(move || {
-        let mut state = HybridQrPollResponse::Waiting;
-        while let Ok(notification) = poll_device_discovery_hybrid_qr(&mut request) {
+        let mut state = HybridPollResponse::Waiting;
+        while let Ok(notification) = poll_device_discovery_hybrid(&mut request) {
             if sender.is_closed() {
                 break;
             }
             match (state, notification) {
-                (HybridQrPollResponse::Waiting, HybridQrPollResponse::Connecting) => {
+                (HybridPollResponse::Waiting, HybridPollResponse::Connecting) => {
                     sender
                         .send_blocking(notification)
                         .expect("The channel to be open");
                 }
-                (_, HybridQrPollResponse::Completed) => {
+                (_, HybridPollResponse::Completed) => {
                     sender
                         .send_blocking(notification)
                         .expect("The channel to be open");
                 }
-                (_, HybridQrPollResponse::UserCancelled) => {
+                (_, HybridPollResponse::UserCancelled) => {
                     sender.close();
                     break;
                 }
@@ -173,8 +188,8 @@ fn start_qr_flow(picture: &Picture) {
                 break;
             }
             match notification {
-                HybridQrPollResponse::UserCancelled => {
-                    println!("backend: Cancelled QR code");
+                HybridPollResponse::UserCancelled => {
+                    println!("backend: Cancelled hybrid flow");
                     picture.set_paintable(None::<&Texture>);
                     picture.next_sibling()
                         .expect("Sibling to exist")
@@ -182,7 +197,7 @@ fn start_qr_flow(picture: &Picture) {
                     receiver.close();
                     break;
                 }
-                HybridQrPollResponse::Connecting => {
+                HybridPollResponse::Connecting => {
                     picture.set_paintable(None::<&Texture>);
                     picture
                         .prev_sibling()
@@ -196,7 +211,7 @@ fn start_qr_flow(picture: &Picture) {
                         .set_spinning(true);
                     spinner.set_visible(true);
                 },
-                HybridQrPollResponse::Completed => {
+                HybridPollResponse::Completed => {
                     println!("backend: Got credential!");
                     picture.activate_action("window.close", None).expect("Window to close");
                 }
@@ -206,20 +221,104 @@ fn start_qr_flow(picture: &Picture) {
     }));
 }
 
+fn start_linked_device_flow(page: &NavigationPage, device: String) {
+    // This is almost exactly the same as hybrid, except we send a device selection and don't display the QR code.
+    let b = page.child();
+    let container = b.and_downcast_ref::<Box>().expect("child to be box");
+    let label = container
+        .first_child()
+        .expect("child to exist")
+        .next_sibling();
+    let label = label
+        .and_downcast_ref::<Label>()
+        .expect("sibling to be Label");
+    label.set_text(format!("Connecting to your `{}` device", device).as_str());
+    let spinner = label.next_sibling().expect("Sibling to exist");
+    spinner
+        .downcast_ref::<Spinner>()
+        .expect("sibling to be Spinner")
+        .set_spinning(true);
+    spinner.set_visible(true);
+
+    let (mut request, qr_data) = start_device_discovery_hybrid(Some(device.to_string())).unwrap();
+    let (sender, receiver) = async_channel::bounded(2);
+    let s1 = sender.clone();
+    page.connect_hiding(move |_| {
+        if !s1.is_closed() {
+            s1.send_blocking(HybridPollResponse::UserCancelled)
+                .expect("channel to be open");
+            cancel_device_discovery_hybrid(&request);
+        }
+    });
+    gio::spawn_blocking(move || {
+        let mut state = HybridPollResponse::Connecting;
+        while let Ok(notification) = poll_device_discovery_hybrid(&mut request) {
+            if sender.is_closed() {
+                break;
+            }
+            match (state, notification) {
+                (HybridPollResponse::Waiting, HybridPollResponse::Connecting) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                }
+                (_, HybridPollResponse::Completed) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                }
+                (_, HybridPollResponse::UserCancelled) => {
+                    sender.close();
+                    break;
+                }
+                _ => {}
+            }
+            state = notification;
+
+            thread::sleep(Duration::from_millis(500));
+        }
+    });
+
+    glib::spawn_future_local(
+        clone!(@weak page, @weak label, @weak spinner => async move {
+            while let Ok(notification) = receiver.recv().await {
+                if receiver.is_closed() {
+                    break;
+                }
+                match notification {
+                    HybridPollResponse::UserCancelled => {
+                        println!("backend: Cancelled hybrid flow");
+                        label.set_label("");
+                        spinner.set_visible(false);
+                        receiver.close();
+                        break;
+                    }
+                    HybridPollResponse::Completed => {
+                        println!("backend: Got credential!");
+                        // TODO: Show final confirmation?
+                        page.activate_action("window.close", None).expect("Window to close");
+                    }
+                    _ => {},
+                }
+            }
+        }),
+    );
+}
+
 fn start_usb_flow(page: &NavigationPage) {
     let b = page.child();
-    let container = b
-        .and_downcast_ref::<Box>()
-        .expect("child to be box");
-    let label = container.first_child().expect("child to exist").next_sibling();
+    let container = b.and_downcast_ref::<Box>().expect("child to be box");
+    let label = container
+        .first_child()
+        .expect("child to exist")
+        .next_sibling();
     let label = label
         .and_downcast_ref::<Label>()
         .expect("sibling to be Label");
     label.set_text("Insert your security key");
-    let spinner = label
-        .next_sibling()
-        .expect("Sibling to exist");
-    spinner.downcast_ref::<Spinner>()
+    let spinner = label.next_sibling().expect("Sibling to exist");
+    spinner
+        .downcast_ref::<Spinner>()
         .expect("sibling to be Spinner")
         .set_spinning(true);
     spinner.set_visible(true);

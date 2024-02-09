@@ -41,15 +41,29 @@ pub(crate) fn get_available_public_key_devices() -> Result<Vec<Device>, ()> {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct HybridQrRequest {
+pub(crate) struct HybridRequest {
     poll_count: i32,
-    state: HybridQrPollResponse,
+    state: HybridPollResponse,
 }
 
 /// Returns string of "FIDO:/...", which should be QR-encoded and displayed to the user.
-pub(crate) fn start_device_discovery_hybrid_qr() -> Result<(HybridQrRequest, String), ()> {
-    println!("frontend: Start QR hybrid flow");
-    Ok((HybridQrRequest{ poll_count: 0, state: HybridQrPollResponse::Waiting }, String::from("FIDO:/078241338926040702789239694720083010994762289662861130514766991835876383562063181103169246410435938367110394959927031730060360967994421343201235185697538107096654083332")))
+pub(crate) fn start_device_discovery_hybrid(
+    device: Option<String>,
+) -> Result<(HybridRequest, Option<String>), ()> {
+    if let Some(device) = device {
+        // State-assisted
+        println!("frontend: Start linked device hybrid flow for {device}");
+        Ok((
+            HybridRequest {
+                poll_count: 0,
+                state: HybridPollResponse::Connecting,
+            },
+            None,
+        ))
+    } else {
+        println!("frontend: Start QR hybrid flow");
+        Ok((HybridRequest{ poll_count: 0, state: HybridPollResponse::Waiting }, Some(String::from("FIDO:/078241338926040702789239694720083010994762289662861130514766991835876383562063181103169246410435938367110394959927031730060360967994421343201235185697538107096654083332"))))
+    }
 }
 
 // TODO: I don't know if it's better to design this API for the backend to
@@ -57,14 +71,18 @@ pub(crate) fn start_device_discovery_hybrid_qr() -> Result<(HybridQrRequest, Str
 // Polling is simpler.
 
 #[derive(Copy, Clone)]
-pub enum HybridQrPollResponse {
+pub enum HybridPollResponse {
     /// Awaiting BLE advert from phone.
     Waiting,
-    ///
+
+    /// Connecting to caBLE tunnel.
     Connecting,
-    /// Connected
+
+    /// Connected to device via caBLE tunnel.
     // I don't think is necessary to signal
-    // Connected.
+    // Connected,
+
+    /// Credential received over tunnel.
     Completed,
 
     // This isn't actually sent from the server.
@@ -72,9 +90,9 @@ pub enum HybridQrPollResponse {
 }
 
 /// Poll for notificactions
-pub(crate) fn poll_device_discovery_hybrid_qr(
-    request: &mut HybridQrRequest,
-) -> Result<HybridQrPollResponse, ()> {
+pub(crate) fn poll_device_discovery_hybrid(
+    request: &mut HybridRequest,
+) -> Result<HybridPollResponse, ()> {
     thread::sleep(Duration::from_millis(25));
     if request.poll_count < 0 {
         return Err(());
@@ -82,34 +100,38 @@ pub(crate) fn poll_device_discovery_hybrid_qr(
 
     request.poll_count += 1;
     if request.poll_count < 10 {
-        request.state = HybridQrPollResponse::Waiting;
+        request.state = HybridPollResponse::Waiting;
     } else if request.poll_count < 20 {
-        if let HybridQrPollResponse::Connecting = request.state {
+        if let HybridPollResponse::Connecting = request.state {
         } else {
             println!("frontend: Received BLE advert from mobile device");
         }
-        request.state = HybridQrPollResponse::Connecting
+        request.state = HybridPollResponse::Connecting
     } else if request.poll_count < 30 {
         // if let HybridQrPollResponse::Connected = request.state {
-        if let HybridQrPollResponse::Connecting = request.state {
+        // NOTE: this is actually out of order for state-assisted transactions.
+        // I think the difference between connecting to the tunnel and receiving
+        // the device BLE advert should be internal to the frontend,
+        // and the frontend can correctly log its own internal state.
+        if let HybridPollResponse::Connecting = request.state {
         } else {
             println!("frontend: Connected to caBLE tunnel for mobile device");
         }
         // request.state = HybridQrPollResponse::Connected;
-        request.state = HybridQrPollResponse::Connecting;
+        request.state = HybridPollResponse::Connecting;
     } else {
-        if let HybridQrPollResponse::Completed = request.state {
+        if let HybridPollResponse::Completed = request.state {
         } else {
             println!("frontend: Received CTAP advert from mobile device");
         }
         request.poll_count = -1;
-        request.state = HybridQrPollResponse::Completed;
+        request.state = HybridPollResponse::Completed;
     }
     Ok(request.state)
 }
 
-pub(crate) fn cancel_device_discovery_hybrid_qr(_request: &HybridQrRequest) {
-    println!("frontend: Cancel Hybrid QR request")
+pub(crate) fn cancel_device_discovery_hybrid(_request: &HybridRequest) {
+    println!("frontend: Cancel Hybrid request")
 }
 
 #[derive(Clone, Copy)]

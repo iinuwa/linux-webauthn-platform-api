@@ -20,6 +20,9 @@ pub struct Window {
     pub device_chooser: TemplateChild<DeviceChooser>,
 
     #[template_child]
+    pub linked_device_page: TemplateChild<NavigationPage>,
+
+    #[template_child]
     pub qr_page: TemplateChild<NavigationPage>,
 
     #[template_child]

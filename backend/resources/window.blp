@@ -87,7 +87,7 @@ template $CredentialManagerWindow : ApplicationWindow {
         };
       }
 
-      Adw.NavigationPage {
+      Adw.NavigationPage linked_device_page {
         title: _("Use Linked Device");
         tag: "linked-start";
         child: Box {
@@ -97,12 +97,12 @@ template $CredentialManagerWindow : ApplicationWindow {
             show-end-title-buttons: false;
           }
 
-          Spinner {
-            spinning: true;
-          }
-
           Label {
             label: _("Connecting to your device...");
+          }
+
+          Spinner {
+            spinning: true;
           }
         };
       }
