@@ -373,7 +373,7 @@ fn sign_attestation(
     let rng = &SystemRandom::new();
     match cred_pub_key_parameters.alg {
         -7 => {
-            let ecdsa = EcdsaKeyPair::from_pkcs8(P256, key_pair).unwrap();
+            let ecdsa = EcdsaKeyPair::from_pkcs8(P256, key_pair, &SystemRandom::new()).unwrap();
             Ok(ecdsa.sign(rng, &signed_data).unwrap().as_ref().to_vec())
         }
         -8 => {
@@ -454,7 +454,7 @@ fn cose_encode_public_key(
     match parameters.alg {
         -7 => {
             let key_pair =
-                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8_key).unwrap();
+                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8_key, &SystemRandom::new()).unwrap();
             let public_key = key_pair.public_key().as_ref();
             // ring outputs public keys with uncompressed 32-byte x and y coordinates
             if public_key.len() != 65 || public_key[0] != 0x04 {
@@ -514,11 +514,10 @@ fn cose_encode_public_key(
 mod test {
     use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
     use ring::{
-        digest::{digest, SHA256},
-        signature::{
+        digest::{digest, SHA256}, rand::{SecureRandom, SystemRandom}, signature::{
             EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, KeyPair, RsaKeyPair,
             ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256,
-        },
+        }
     };
 
     use super::{
@@ -542,7 +541,7 @@ mod test {
     #[ignore]
     fn test_attestation() {
         let key_file = std::fs::read("private-key1.pk8").unwrap();
-        let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file).unwrap();
+        let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file, &SystemRandom::new()).unwrap();
         let key_parameters = PublicKeyCredentialParameters {
             alg: -7,
             cred_type: "public-key".to_string(),
