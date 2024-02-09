@@ -1,9 +1,12 @@
+use std::cell::RefCell;
+
 use gtk::glib;
 use gtk::glib::subclass::InitializingObject;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{Button, CompositeTemplate};
 
+use crate::portal::frontend::Device;
 use crate::views::device_chooser::DeviceChooser;
 
 #[derive(CompositeTemplate, Default)]
@@ -14,6 +17,8 @@ pub struct Window {
 
     #[template_child]
     pub device_chooser: TemplateChild<DeviceChooser>,
+
+    pub(crate) devices: RefCell<Vec<Device>>,
 }
 
 #[gtk::template_callbacks]
@@ -25,6 +30,7 @@ impl Window {
             .expect("window to close");
     }
 }
+
 #[glib::object_subclass]
 impl ObjectSubclass for Window {
     const NAME: &'static str = "CredentialManagerWindow";
@@ -46,10 +52,8 @@ impl ObjectImpl for Window {
         // Call "constructed" on parent
         self.parent_constructed();
 
-        // let obj = self.obj();
-        // obj.setup_tasks();
-        // obj.setup_callbacks();
-        // obj.setup_factory();
+        let obj = self.obj();
+        obj.setup_devices();
     }
 }
 

@@ -16,41 +16,4 @@ template $CredentialManagerDeviceChooser : Box {
       label: "Where do you want to save this credential?";
     }
   }
-
-  Button {
-    clicked => $handle_internal_authenticator_selected();
-
-    Adw.ButtonContent {
-      icon-name: "computer-symbolic";
-      label: "This device";
-    }
-  }
-
-  Button {
-    clicked => $handle_hybrid_qr_selected();
-
-    Adw.ButtonContent {
-      icon-name: "phone-symbolic";
-      label: "A mobile device";
-    }
-  }
-
-  Button {
-    clicked => $handle_hybrid_linked_device_selected();
-    name: "pixel-7";
-
-    Adw.ButtonContent {
-      icon-name: "phone-symbolic";
-      label: "Pixel 7";
-    }
-  }
-
-  Button {
-    clicked => $handle_security_key_selected();
-
-    Adw.ButtonContent {
-      icon-name: "media-removable-symbolic";
-      label: "A security key";
-    }
-  }
 }
