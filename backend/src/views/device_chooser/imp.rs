@@ -1,15 +1,11 @@
-
-use gtk::glib::subclass::InitializingObject;
 use gtk::glib;
+use gtk::glib::subclass::InitializingObject;
 use gtk::subclass::prelude::*;
-use gtk::{Box, CompositeTemplate};
+use gtk::CompositeTemplate;
 
 #[derive(CompositeTemplate, Default)]
 #[template(resource = "/xyz/iinuwa/CredentialManager/device_chooser.ui")]
-pub struct DeviceChooser {
-    #[template_child]
-    pub device_container: TemplateChild<Box>,
-}
+pub struct DeviceChooser {}
 
 #[glib::object_subclass]
 impl ObjectSubclass for DeviceChooser {

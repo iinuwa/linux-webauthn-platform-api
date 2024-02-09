@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use adw::NavigationPage;
 use gtk::glib;
 use gtk::glib::subclass::InitializingObject;
 use gtk::prelude::*;
@@ -17,6 +18,9 @@ pub struct Window {
 
     #[template_child]
     pub device_chooser: TemplateChild<DeviceChooser>,
+
+    #[template_child]
+    pub qr_page: TemplateChild<NavigationPage>,
 
     pub(crate) devices: RefCell<Vec<Device>>,
 }
