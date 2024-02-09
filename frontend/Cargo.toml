@@ -9,9 +9,9 @@ edition = "2021"
 async-std = "1.12.0"
 base64 = "0.21.2"
 # authenticator = { path = "/home/isaiah/Development/rust/authenticator-rs" }
-oo7 = "0.1.2"
-openssl = "0.10.55"
-ring = "0.16.20"
+oo7 = "0.2.2"
+openssl = "0.10.63"
+ring = "0.17.7"
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 zbus = "3.13.1"
