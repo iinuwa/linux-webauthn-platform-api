@@ -14,7 +14,7 @@ Some high-level goals:
   (passwords, passkeys, security keys)
 - create and retrieve credentials on remote devices (e.g. via CTAP 2 BLE/hybrid
   transports)
-- Provide a uniform intefrace for third-party credential providers
+- Provide a uniform interface for third-party credential providers
   (password/passkey managers like GNOME Secrets, Bitwarden, Keepass, LastPass,
   etc.) to hook into
 
