@@ -107,7 +107,7 @@ template $CredentialManagerWindow : ApplicationWindow {
         };
       }
 
-      Adw.NavigationPage {
+      Adw.NavigationPage usb_page {
         title: _("Use Security Key");
         tag: "security-key-start";
         child: Box {
@@ -117,12 +117,12 @@ template $CredentialManagerWindow : ApplicationWindow {
             show-end-title-buttons: false;
           }
 
-          Spinner {
-            spinning: true;
-          }
-
           Label {
             label: _("Insert your security key");
+          }
+
+          Spinner {
+            spinning: true;
           }
         };
       }

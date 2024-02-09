@@ -25,6 +25,9 @@ pub struct Window {
     #[template_child]
     pub qr_code_img: TemplateChild<Picture>,
 
+    #[template_child]
+    pub usb_page: TemplateChild<NavigationPage>,
+
     pub(crate) devices: RefCell<Vec<Device>>,
 }
 

@@ -111,11 +111,63 @@ pub(crate) fn poll_device_discovery_hybrid_qr(
 pub(crate) fn cancel_device_discovery_hybrid_qr(_request: &HybridQrRequest) {
     println!("frontend: Cancel Hybrid QR request")
 }
-        request.poll_count = -1;
-        Ok(HybridQrPollResponse::Completed)
-    }
+
+#[derive(Clone, Copy)]
+pub(crate) struct UsbRequest {
+    poll_count: i32,
+    state: UsbPollResponse,
 }
 
-pub(crate) fn cancel_device_discovery_hybrid_qr(_request: &Request) {
-    println!("frontend: Cancel request")
+#[derive(Copy, Clone)]
+pub enum UsbPollResponse {
+    /// Awaiting BLE advert from phone.
+    Waiting,
+
+    /// USB device connected, prompt user to tap
+    Connected,
+
+    /// USB tapped, received credential
+    Completed,
+
+    // This isn't actually sent from the server.
+    UserCancelled,
+}
+
+/// Returns string of "FIDO:/...", which should be QR-encoded and displayed to the user.
+pub(crate) fn start_device_discovery_usb() -> Result<UsbRequest, ()> {
+    println!("frontend: Start USB flow");
+    Ok(UsbRequest {
+        poll_count: 0,
+        state: UsbPollResponse::Waiting,
+    })
+}
+
+pub(crate) fn poll_device_discovery_usb(request: &mut UsbRequest) -> Result<UsbPollResponse, ()> {
+    thread::sleep(Duration::from_millis(25));
+    if request.poll_count < 0 {
+        return Err(());
+    }
+
+    request.poll_count += 1;
+    if request.poll_count < 10 {
+        request.state = UsbPollResponse::Waiting;
+    } else if request.poll_count < 20 {
+        if let UsbPollResponse::Connected = request.state {
+        } else {
+            println!("frontend: Discovered FIDO USB key");
+        }
+        request.state = UsbPollResponse::Connected
+    } else {
+        if let UsbPollResponse::Completed = request.state {
+        } else {
+            println!("frontend: Received user verification and credential from FIDO USB device.");
+        }
+        request.poll_count = -1;
+        request.state = UsbPollResponse::Completed;
+    }
+    Ok(request.state)
+}
+
+pub(crate) fn cancel_device_discovery_usb(_request: &UsbRequest) {
+    println!("frontend: Cancel USB request")
 }

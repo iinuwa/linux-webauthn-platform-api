@@ -12,14 +12,13 @@ use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{self, Cancellable, MemoryInputStream};
 use gtk::glib::{self, clone, Bytes, Object, Variant};
 use gtk::subclass::prelude::*;
-use gtk::Button;
-use gtk::Picture;
-use gtk::{prelude::*, Label, Spinner};
+use gtk::{Box, Button, Label, Picture, Spinner};
+use gtk::prelude::*;
 use qrcode::render::svg;
 use qrcode::QrCode;
 
 use crate::portal::frontend::{
-    self, cancel_device_discovery_hybrid_qr, start_device_discovery_hybrid_qr, HybridQrPollResponse,
+    self, cancel_device_discovery_hybrid_qr, cancel_device_discovery_usb, poll_device_discovery_usb, start_device_discovery_hybrid_qr, start_device_discovery_usb, HybridQrPollResponse, UsbPollResponse
 };
 use crate::portal::frontend::{poll_device_discovery_hybrid_qr, DeviceTransport};
 
@@ -91,12 +90,15 @@ impl Window {
                 let button = Button::builder().child(&content).build();
                 button.connect_clicked(clone!(@weak self as window => move |button| {
                     let t = Variant::from_str(target).expect("from_str to work");
-                    // let receiver = window.imp().backend_notifications.borrow().as_ref().expect("receiver to be set up").clone();
                     match target {
                         "'qr-start'" => {
                             let picture = window.imp().qr_code_img.get();
-                            init_qr_start(&picture);
+                            start_qr_flow(&picture);
                         },
+                        "'security-key-start'" => {
+                            let usb_page = window.imp().usb_page.get();
+                            start_usb_flow(&usb_page);
+                        }
                         _ => {},
                     }
                     button.activate_action("navigation.push", Some(&t))
@@ -108,7 +110,7 @@ impl Window {
     }
 }
 
-fn init_qr_start(picture: &Picture) {
+fn start_qr_flow(picture: &Picture) {
     let (mut request, qr_data) = start_device_discovery_hybrid_qr().unwrap();
     let qr_code = QrCode::new(qr_data).expect("QR code to be valid");
     let svg_xml = qr_code.render::<svg::Color>().build();
@@ -197,6 +199,97 @@ fn init_qr_start(picture: &Picture) {
                 HybridQrPollResponse::Completed => {
                     println!("backend: Got credential!");
                     picture.activate_action("window.close", None).expect("Window to close");
+                }
+                _ => {},
+            }
+        }
+    }));
+}
+
+fn start_usb_flow(page: &NavigationPage) {
+    let b = page.child();
+    let container = b
+        .and_downcast_ref::<Box>()
+        .expect("child to be box");
+    let label = container.first_child().expect("child to exist").next_sibling();
+    let label = label
+        .and_downcast_ref::<Label>()
+        .expect("sibling to be Label");
+    label.set_text("Insert your security key");
+    let spinner = label
+        .next_sibling()
+        .expect("Sibling to exist");
+    spinner.downcast_ref::<Spinner>()
+        .expect("sibling to be Spinner")
+        .set_spinning(true);
+    spinner.set_visible(true);
+
+    let mut request = start_device_discovery_usb().unwrap();
+    let (sender, receiver) = async_channel::bounded(2);
+    let s1 = sender.clone();
+    page.connect_hiding(move |_| {
+        if !s1.is_closed() {
+            s1.send_blocking(UsbPollResponse::UserCancelled)
+                .expect("channel to be open");
+            cancel_device_discovery_usb(&request);
+        }
+    });
+    gio::spawn_blocking(move || {
+        let mut state = UsbPollResponse::Waiting;
+        while let Ok(notification) = poll_device_discovery_usb(&mut request) {
+            if sender.is_closed() {
+                break;
+            }
+            match (state, notification) {
+                (UsbPollResponse::Waiting, UsbPollResponse::Connected) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                }
+                (_, UsbPollResponse::Completed) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                }
+                (_, UsbPollResponse::UserCancelled) => {
+                    sender.close();
+                    break;
+                }
+                _ => {}
+            }
+            state = notification;
+
+            thread::sleep(Duration::from_millis(500));
+        }
+    });
+
+    glib::spawn_future_local(clone!(@weak label => async move {
+        while let Ok(notification) = receiver.recv().await {
+            if receiver.is_closed() {
+                break;
+            }
+            match notification {
+                UsbPollResponse::UserCancelled => {
+                    println!("backend: Cancelled USB key flow");
+                    label.set_label("");
+                    let spinner = label.next_sibling()
+                        .expect("Sibling to exist");
+                    spinner.set_visible(false);
+                    receiver.close();
+                    break;
+                }
+                UsbPollResponse::Connected => {
+                    label.set_label("Press your device to release the credential");
+                    let spinner = label.next_sibling()
+                        .expect("Sibling to exist");
+                    spinner.downcast_ref::<Spinner>()
+                        .expect("sibling to be Spinner")
+                        .set_spinning(true);
+                    spinner.set_visible(true);
+                },
+                UsbPollResponse::Completed => {
+                    println!("backend: Got credential!");
+                    label.activate_action("window.close", None).expect("Window to close");
                 }
                 _ => {},
             }
