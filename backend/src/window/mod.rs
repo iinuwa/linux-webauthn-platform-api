@@ -87,29 +87,29 @@ impl Window {
                 let button = Button::builder().child(&content).build();
                 button.connect_clicked(clone!(@weak self as window => move |button| {
                     let t = Variant::from_str(target).expect("from_str to work");
-                    button.activate_action("navigation.push", Some(&t))
-                        .expect("navigation.push action to exist");
                     match target {
                         "'qr-start'" => {
-                            let qr_data = start_device_discovery_hybrid_qr().unwrap_or(String::from("Could not show QR code"));
-                            let qr_page = window.imp().qr_page.get();
-                            // let label = Label::new(Some(&qr_data));
-                            let qr_code = QrCode::new(qr_data).expect("QR code to be valid");
-                            let svg_xml = qr_code.render::<svg::Color>().build();
-                            let stream = MemoryInputStream::from_bytes(&Bytes::from(svg_xml.as_bytes()));
-                            let pixbuf = Pixbuf::from_stream_at_scale(&stream, 450, 450, true, None::<&Cancellable>).expect("SVG to render");
-                            let texture = Texture::for_pixbuf(&pixbuf);
-                            let picture = Picture::for_paintable(&texture);
-                            qr_page.child()
-                                .and_downcast_ref::<Box>()
-                                .expect("child to be Box")
-                                .append(&picture);
+                            let picture = window.imp().qr_code_img.get();
+                            init_qr_start(&picture);
                         },
                         _ => {},
                     }
+                    button.activate_action("navigation.push", Some(&t))
+                        .expect("navigation.push action to exist");
                 }));
                 container.append(&button);
             }
         }
     }
+
+}
+
+fn init_qr_start(picture: &Picture) {
+    let qr_data = start_device_discovery_hybrid_qr().unwrap_or(String::from("Could not show QR code"));
+    let qr_code = QrCode::new(qr_data).expect("QR code to be valid");
+    let svg_xml = qr_code.render::<svg::Color>().build();
+    let stream = MemoryInputStream::from_bytes(&Bytes::from(svg_xml.as_bytes()));
+    let pixbuf = Pixbuf::from_stream_at_scale(&stream, 450, 450, true, None::<&Cancellable>).expect("SVG to render");
+    let texture = Texture::for_pixbuf(&pixbuf);
+    picture.set_paintable(Some(&texture));
 }
