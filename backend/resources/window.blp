@@ -63,6 +63,15 @@ template $CredentialManagerWindow : ApplicationWindow {
             label: _("Enter your device PIN");
           }
 
+          Adw.PasswordEntryRow {
+            entry-activated => $handle_device_pin_activated();
+            title: "Device PIN";
+          }
+
+          Label {
+            label: "";
+          }
+
         };
       }
 

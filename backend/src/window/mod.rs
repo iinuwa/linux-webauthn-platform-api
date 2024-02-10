@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use adw::prelude::NavigationPageExt;
-use adw::{Application, ButtonContent};
+use adw::{Application, ButtonContent, PasswordEntryRow};
 use adw::{NavigationPage, StatusPage};
 use gtk::gdk::Texture;
 use gtk::gdk_pixbuf::Pixbuf;
@@ -94,6 +94,7 @@ impl Window {
                     let t = Variant::from_str(target).expect("from_str to work");
                     // let name = name.unwrap().to_string().clone();
                     match target {
+                        "'internal-authenticator-start'" => {},
                         "'qr-start'" => {
                             let picture = window.imp().qr_code_img.get();
                             start_qr_flow(&picture);
@@ -116,6 +117,15 @@ impl Window {
             }
         }
     }
+}
+
+fn handle_enter_device_pin(entry: &PasswordEntryRow) {
+    let pin = entry.text();
+    println!("{pin}");
+}
+
+fn start_internal_authenticator_flow() {
+
 }
 
 fn start_qr_flow(picture: &Picture) {
@@ -240,7 +250,7 @@ fn start_linked_device_flow(page: &NavigationPage, device: String) {
         .set_spinning(true);
     spinner.set_visible(true);
 
-    let (mut request, qr_data) = start_device_discovery_hybrid(Some(device.to_string())).unwrap();
+    let (mut request, _) = start_device_discovery_hybrid(Some(device.to_string())).unwrap();
     let (sender, receiver) = async_channel::bounded(2);
     let s1 = sender.clone();
     page.connect_hiding(move |_| {

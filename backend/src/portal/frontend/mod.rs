@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{borrow::BorrowMut, cell::RefCell, ops::Add, sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex}, thread, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 // TODO: Do we need a separate device, or just the transport?
 pub(crate) struct Device {
@@ -50,6 +50,7 @@ pub(crate) struct HybridRequest {
 pub(crate) fn start_device_discovery_hybrid(
     device: Option<String>,
 ) -> Result<(HybridRequest, Option<String>), ()> {
+    // TODO: Do we need to add a parameter for state.
     if let Some(device) = device {
         // State-assisted
         println!("frontend: Start linked device hybrid flow for {device}");
@@ -192,4 +193,49 @@ pub(crate) fn poll_device_discovery_usb(request: &mut UsbRequest) -> Result<UsbP
 
 pub(crate) fn cancel_device_discovery_usb(_request: &UsbRequest) {
     println!("frontend: Cancel USB request")
+}
+
+pub enum PinResponse {
+    Correct,
+    /// Incorrect PIN given, contains time (in seconds since Unix epoch) when
+    /// the user can retry.
+    // TODO: Should we show how many retries are left?
+    Incorrect(usize),
+
+    /// PIN locked out, contains time (in seconds since Unix epoch) when
+    /// the user can retry.
+    Locked(Duration),
+}
+
+static PIN_COUNT: AtomicUsize = AtomicUsize::new(0);
+const UNLOCK_TIME: RefCell<Option<SystemTime>> = RefCell::new(None);
+
+pub(crate) fn validate_device_pin(pin: &str) -> Result<PinResponse, ()>{
+    let pin_count = PIN_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+    let unlock_time_option = *UNLOCK_TIME.borrow();
+    let now = SystemTime::now();
+    if let Some(unlock_time) = unlock_time_option {
+        if unlock_time < now {
+            let t = unlock_time.duration_since(UNIX_EPOCH).unwrap();
+            return Ok(PinResponse::Locked(t));
+        } else {
+            *UNLOCK_TIME.borrow_mut() = None;
+        }
+    }
+
+    const ATTEMPTS_BEFORE_LOCKOUT: usize = 5;
+    if pin == "123456" {
+        PIN_COUNT.store(0, Ordering::Relaxed);
+        Ok(PinResponse::Correct)
+    } else if pin_count < ATTEMPTS_BEFORE_LOCKOUT {
+        Ok(PinResponse::Incorrect(ATTEMPTS_BEFORE_LOCKOUT - pin_count))
+    } else {
+        let t = now.add(Duration::from_secs(10));
+        *UNLOCK_TIME.borrow_mut() = Some(t);
+        Ok(PinResponse::Locked(t.duration_since(UNIX_EPOCH).unwrap()))
+    }
+}
+
+pub(crate) fn start_device_discovery_fingerprint() {
+
 }
