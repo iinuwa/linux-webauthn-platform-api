@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use adw::prelude::NavigationPageExt;
-use adw::{Application, ButtonContent, PasswordEntryRow};
+use adw::{Application, ButtonContent};
 use adw::{NavigationPage, StatusPage};
 use gtk::gdk::Texture;
 use gtk::gdk_pixbuf::Pixbuf;
@@ -92,7 +92,6 @@ impl Window {
                 let button = Button::builder().child(&content).build();
                 button.connect_clicked(clone!(@weak self as window => move |button| {
                     let t = Variant::from_str(target).expect("from_str to work");
-                    // let name = name.unwrap().to_string().clone();
                     match target {
                         "'internal-authenticator-start'" => {},
                         "'qr-start'" => {
@@ -117,15 +116,6 @@ impl Window {
             }
         }
     }
-}
-
-fn handle_enter_device_pin(entry: &PasswordEntryRow) {
-    let pin = entry.text();
-    println!("{pin}");
-}
-
-fn start_internal_authenticator_flow() {
-
 }
 
 fn start_qr_flow(picture: &Picture) {
@@ -223,7 +213,9 @@ fn start_qr_flow(picture: &Picture) {
                 },
                 HybridPollResponse::Completed => {
                     println!("backend: Got credential!");
-                    picture.activate_action("window.close", None).expect("Window to close");
+                    picture
+                        .activate_action("navigation.push", Some(&"finish".into()))
+                        .expect("navigation.push action to exist");
                 }
                 _ => {},
             }
@@ -305,8 +297,9 @@ fn start_linked_device_flow(page: &NavigationPage, device: String) {
                     }
                     HybridPollResponse::Completed => {
                         println!("backend: Got credential!");
-                        // TODO: Show final confirmation?
-                        page.activate_action("window.close", None).expect("Window to close");
+                        page
+                            .activate_action("navigation.push", Some(&"finish".into()))
+                            .expect("navigation.push action to exist");
                     }
                     _ => {},
                 }
@@ -398,7 +391,9 @@ fn start_usb_flow(page: &NavigationPage) {
                 },
                 UsbPollResponse::Completed => {
                     println!("backend: Got credential!");
-                    label.activate_action("window.close", None).expect("Window to close");
+                    label
+                        .activate_action("navigation.push", Some(&"finish".into()))
+                        .expect("navigation.push action to exist");
                 }
                 _ => {},
             }

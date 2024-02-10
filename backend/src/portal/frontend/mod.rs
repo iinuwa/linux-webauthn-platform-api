@@ -1,4 +1,10 @@
-use std::{borrow::BorrowMut, cell::RefCell, ops::Add, sync::{atomic::{AtomicUsize, Ordering}, Arc, Mutex}, thread, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{
+    cell::RefCell,
+    ops::Add,
+    sync::atomic::{AtomicUsize, Ordering},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 // TODO: Do we need a separate device, or just the transport?
 pub(crate) struct Device {
@@ -63,7 +69,14 @@ pub(crate) fn start_device_discovery_hybrid(
         ))
     } else {
         println!("frontend: Start QR hybrid flow");
-        Ok((HybridRequest{ poll_count: 0, state: HybridPollResponse::Waiting }, Some(String::from("FIDO:/078241338926040702789239694720083010994762289662861130514766991835876383562063181103169246410435938367110394959927031730060360967994421343201235185697538107096654083332"))))
+        let qr_data = String::from("FIDO:/078241338926040702789239694720083010994762289662861130514766991835876383562063181103169246410435938367110394959927031730060360967994421343201235185697538107096654083332");
+        Ok((
+            HybridRequest {
+                poll_count: 0,
+                state: HybridPollResponse::Waiting,
+            },
+            Some(qr_data),
+        ))
     }
 }
 
@@ -208,9 +221,12 @@ pub enum PinResponse {
 }
 
 static PIN_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+#[allow(clippy::declare_interior_mutable_const)] // This is just for demo purposes.
 const UNLOCK_TIME: RefCell<Option<SystemTime>> = RefCell::new(None);
 
-pub(crate) fn validate_device_pin(pin: &str) -> Result<PinResponse, ()>{
+#[allow(clippy::borrow_interior_mutable_const)] // This is just for demo purposes.
+pub(crate) fn validate_device_pin(pin: &str) -> Result<PinResponse, ()> {
     let pin_count = PIN_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
     let unlock_time_option = *UNLOCK_TIME.borrow();
     let now = SystemTime::now();
@@ -236,6 +252,4 @@ pub(crate) fn validate_device_pin(pin: &str) -> Result<PinResponse, ()>{
     }
 }
 
-pub(crate) fn start_device_discovery_fingerprint() {
-
-}
+pub(crate) fn start_device_discovery_fingerprint() {}

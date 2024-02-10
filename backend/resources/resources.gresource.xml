@@ -6,4 +6,7 @@
   <gresource prefix="/xyz/iinuwa/CredentialManager/">
     <file compressed="true" preprocess="xml-stripblanks">device_chooser.ui</file>
   </gresource>
+  <gresource prefix="/xyz/iinuwa/CredentialManager1/icons">
+    <file compressed="true" preprocess="xml-stripblanks">check-round-outline-symbolic.svg</file>
+  </gresource>
 </gresources>

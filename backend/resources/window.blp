@@ -136,6 +136,24 @@ template $CredentialManagerWindow : ApplicationWindow {
         };
       }
 
+      Adw.NavigationPage finish_page {
+        title: _("Got Credential");
+        tag: "finish";
+        shown => $handle_finish_page_shown();
+        child: Box {
+          orientation: vertical;
+          [top]
+          Adw.HeaderBar {
+            show-end-title-buttons: false;
+          }
+
+          Adw.StatusPage {
+            icon-name: "check-round-outline-symbolic";
+            title: "Finished";
+          }
+        };
+      }
+
     }
   }
 }

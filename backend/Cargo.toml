@@ -13,3 +13,4 @@ qrcode = "0.13.0"
 
 [build-dependencies]
 glib-build-tools = "0.18.0"
+walkdir = "2.4.0"

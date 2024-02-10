@@ -1,7 +1,9 @@
 use std::cell::RefCell;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use adw::{NavigationPage, PasswordEntryRow};
+use gtk::gio;
 use gtk::glib;
 use gtk::glib::clone;
 use gtk::glib::subclass::InitializingObject;
@@ -46,25 +48,42 @@ impl Window {
     }
 
     #[template_callback]
+    fn handle_finish_page_shown(page: &NavigationPage) {
+        glib::spawn_future_local(clone!(@weak page => async move {
+            gio::spawn_blocking(move || {
+                thread::sleep(Duration::from_secs(1));
+            }).await
+            .expect("the Task to finish successfully");
+            page.activate_action("window.close", None).unwrap();
+        }));
+    }
+
+    #[template_callback]
     fn handle_device_pin_activated(entry: &PasswordEntryRow) {
         let text = entry.text();
         let pin = text.as_str();
         let now = SystemTime::now();
         if let Ok(pin_response) = validate_device_pin(pin) {
             match pin_response {
-                PinResponse::Correct => {},
+                PinResponse::Correct => {
+                    entry
+                        .activate_action("navigation.push", Some(&"finish".into()))
+                        .expect("navigation.push action to exist.");
+                }
                 PinResponse::Incorrect(attempts_left) => {
                     let label = entry.next_sibling();
                     let label = label
-                            .and_downcast_ref::<Label>()
-                            .expect("sibling to be a label");
+                        .and_downcast_ref::<Label>()
+                        .expect("sibling to be a label");
                     if attempts_left <= 3 {
-                        label.set_label(format!("PIN incorrect. {attempts_left} attempt(s) left until lockout").as_str());
-                    }
-                    else {
+                        label.set_label(
+                            format!("PIN incorrect. {attempts_left} attempt(s) left until lockout")
+                                .as_str(),
+                        );
+                    } else {
                         label.set_label("PIN incorrect.")
                     }
-                },
+                }
                 PinResponse::Locked(lockout_time) => {
                     entry.set_editable(false);
                     glib::spawn_future_local(clone!(@weak entry => async move {
@@ -78,7 +97,7 @@ impl Window {
                             .expect("sibling to be a label")
                             .set_label(format!("Device locked out. Try again in {} seconds", lockout_duration.as_secs()).as_str());
                     }));
-                },
+                }
             }
         }
     }
