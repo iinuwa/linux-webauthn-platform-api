@@ -47,6 +47,37 @@ implement the interactions between the client, portal frontend, portal backend,
 machine and mobile devices. Once that is done, I intend to convert the API into
 a [portal spec](doc/design-doc.md), making it fit normal D-Bus/portal patterns.
 
+## Mockups
+
+Here are some mockups of what this would look like for a user:
+
+### Internal platform authenticator flow (device PIN)
+
+![](images/register-start.png)
+![](images/internal-pin-2.png)
+![](images/end.png)
+
+Alternatively, lock out the credential based on incorrect attempts.
+
+![](images/internal-pin-3.png)
+![](images/internal-pin-4.png)
+
+### Hybrid credential flow
+
+![](images/register-start.png)
+![](images/qr-flow-2.png)
+![](images/qr-flow-3.png)
+![](images/end.png)
+
+### Security key flow
+
+![](images/register-start.png)
+![](images/security-key-2.png)
+![](images/security-key-3.png)
+![](images/end.png)
+
+
+
 ## Related projects:
 - https://github.com/AlfioEmanueleFresta/xdg-credentials-portal
 - authenticator-rs
