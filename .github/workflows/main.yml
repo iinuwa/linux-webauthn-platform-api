@@ -14,7 +14,7 @@ jobs:
 
     steps:
     - name: Install system dependencies
-      run: apt install -y blueprint-compiler clang libadwaita-1-dev libgtk-4-dev libssl-dev
+      run: sudo apt install -y blueprint-compiler clang libadwaita-1-dev libgtk-4-dev libssl-dev
 
     - uses: actions/checkout@v3
     - name: Build backend
