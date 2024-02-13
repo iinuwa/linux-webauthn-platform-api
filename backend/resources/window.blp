@@ -14,20 +14,15 @@ template $CredentialManagerWindow : ApplicationWindow {
 
     CenterBox {
       hexpand: true;
-      start-widget: 
-      Label {
+      start-widget: Label {
         label: "Sign In";
         styles ["title"]
-      }
+      };
 
-      ;
-      end-widget: 
-      Button cancel_button {
+      end-widget: Button cancel_button {
         clicked => $handle_cancel_button_clicked();
         label: "Cancel";
-      }
-
-      ;
+      };
     }
 
     Separator {
@@ -49,7 +44,7 @@ template $CredentialManagerWindow : ApplicationWindow {
         };
       }
 
-      Adw.NavigationPage {
+      Adw.NavigationPage internal_authenticator_page {
         title: _("<Internal authenticator>");
         tag: "internal-authenticator-start";
         child: Box {
@@ -71,7 +66,26 @@ template $CredentialManagerWindow : ApplicationWindow {
           Label {
             label: "";
           }
+          CenterBox {
+            margin-top: 12;
+            margin-bottom: 12;
+            margin-start: 12;
+            margin-end: 12;
 
+            center-widget: Box internal_auth_methods {
+              visible: false;
+              margin-top: 12;
+              margin-bottom: 12;
+              margin-start: 12;
+              margin-end: 12;
+              spacing: 6;
+          
+              Image {
+                icon-name: "dialpad-symbolic";
+                styles ["large-icons"]
+              }
+            };
+          }
         };
       }
 

@@ -11,15 +11,14 @@ use gtk::gdk::Texture;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{self, Cancellable, MemoryInputStream};
 use gtk::glib::{self, clone, Bytes, Object, Variant};
-use gtk::prelude::*;
+use gtk::{prelude::*, Image};
 use gtk::subclass::prelude::*;
 use gtk::{Box, Button, Label, Picture, Spinner};
 use qrcode::render::svg;
 use qrcode::QrCode;
 
 use crate::portal::frontend::{
-    self, cancel_device_discovery_hybrid, cancel_device_discovery_usb, poll_device_discovery_usb,
-    start_device_discovery_hybrid, start_device_discovery_usb, HybridPollResponse, UsbPollResponse,
+    self, cancel_device_discovery_hybrid, cancel_device_discovery_usb, get_available_platform_user_verification_methods, poll_device_discovery_usb, start_device_discovery_hybrid, start_device_discovery_usb, HybridPollResponse, UsbPollResponse, UserVerificationMethod
 };
 use crate::portal::frontend::{poll_device_discovery_hybrid, DeviceTransport};
 
@@ -93,7 +92,21 @@ impl Window {
                 button.connect_clicked(clone!(@weak self as window => move |button| {
                     let t = Variant::from_str(target).expect("from_str to work");
                     match target {
-                        "'internal-authenticator-start'" => {},
+                        "'internal-authenticator-start'" => {
+                            let uv_methods = get_available_platform_user_verification_methods();
+                            if uv_methods.contains(&UserVerificationMethod::FingerprintInternal) {
+                                let methods = window.imp()
+                                    .internal_auth_methods
+                                    .get();
+                                let image = Image::builder()
+                                    .icon_name("fingerprint-symbolic")
+                                    .css_classes(["large-icons"])
+                                    .build();
+                                // TODO: Make this idempotent
+                                methods.append(&image);
+                                methods.set_visible(true);
+                            }
+                        },
                         "'qr-start'" => {
                             let picture = window.imp().qr_code_img.get();
                             start_qr_flow(&picture);

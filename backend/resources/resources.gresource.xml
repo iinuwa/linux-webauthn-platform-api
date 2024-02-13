@@ -9,4 +9,10 @@
   <gresource prefix="/xyz/iinuwa/CredentialManager1/icons">
     <file compressed="true" preprocess="xml-stripblanks">check-round-outline-symbolic.svg</file>
   </gresource>
+  <gresource prefix="/xyz/iinuwa/CredentialManager1/icons">
+    <file compressed="true" preprocess="xml-stripblanks">dialpad-symbolic.svg</file>
+  </gresource>
+  <gresource prefix="/xyz/iinuwa/CredentialManager1/icons">
+    <file compressed="true" preprocess="xml-stripblanks">fingerprint-symbolic.svg</file>
+  </gresource>
 </gresources>

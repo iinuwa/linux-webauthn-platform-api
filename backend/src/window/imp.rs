@@ -9,7 +9,7 @@ use gtk::glib::clone;
 use gtk::glib::subclass::InitializingObject;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{Button, CompositeTemplate, Label, Picture};
+use gtk::{Box, Button, CompositeTemplate, Label, Picture};
 
 use crate::portal::frontend::{validate_device_pin, Device, PinResponse};
 use crate::views::device_chooser::DeviceChooser;
@@ -22,6 +22,12 @@ pub struct Window {
 
     #[template_child]
     pub device_chooser: TemplateChild<DeviceChooser>,
+
+    #[template_child]
+    pub internal_auth_methods: TemplateChild<Box>,
+
+    #[template_child]
+    pub internal_authenticator_page: TemplateChild<NavigationPage>,
 
     #[template_child]
     pub linked_device_page: TemplateChild<NavigationPage>,

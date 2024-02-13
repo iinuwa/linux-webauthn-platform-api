@@ -252,4 +252,19 @@ pub(crate) fn validate_device_pin(pin: &str) -> Result<PinResponse, ()> {
     }
 }
 
+/// One of https://fidoalliance.org/specs/common-specs/fido-registry-v2.1-ps-20191217.html#user-verification-methods.
+#[derive(PartialEq)]
+pub(crate) enum UserVerificationMethod {
+    PasscodeInternal,
+    FingerprintInternal
+}
+
+/// List of User Verfication Methods supported by the internal platform authenticator.
+pub(crate) /* TODO: async */ fn get_available_platform_user_verification_methods() -> Vec<UserVerificationMethod> {
+    vec![
+        UserVerificationMethod::PasscodeInternal,
+        UserVerificationMethod::FingerprintInternal,
+    ]
+}
+
 pub(crate) fn start_device_discovery_fingerprint() {}
