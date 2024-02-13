@@ -20,7 +20,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         let entry = entry.unwrap();
         let path = entry.path();
         if path.is_file() {
-            println!("{path:?}");
             if let Some(extension) = path.extension() {
                 if extension == "blp" {
                     paths.push(path.to_str().unwrap().to_owned());

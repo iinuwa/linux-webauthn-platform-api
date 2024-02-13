@@ -7,14 +7,14 @@ Backend for providing UI for credential API interation.
 - rust
 - clang or gcc
 
-## Fedora
+## Fedora (38 or later)
 
 - gtk4-devel
 - libadwaita-devel
 - openssl-devel
 - blueprint-compiler
 
-## Ubuntu
+## Ubuntu (23.10 or later)
 
 - blueprint-compiler
 - libgtk-4-dev
