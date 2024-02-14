@@ -49,6 +49,19 @@ impl Window {
             return;
         }
 
+        let uv_methods = get_available_platform_user_verification_methods();
+        if uv_methods.contains(&UserVerificationMethod::FingerprintInternal) {
+            let methods = self.imp()
+                .internal_auth_methods
+                .get();
+            let image = Image::builder()
+                .icon_name("fingerprint-symbolic")
+                .css_classes(["large-icons", "selected"])
+                .build();
+            methods.append(&image);
+            methods.set_visible(true);
+        }
+
         for device in (*devices).iter() {
             if let Some((icon_name, label, name, target)) = match &device.transport {
                 DeviceTransport::Internal => Some((
@@ -93,19 +106,6 @@ impl Window {
                     let t = Variant::from_str(target).expect("from_str to work");
                     match target {
                         "'internal-authenticator-start'" => {
-                            let uv_methods = get_available_platform_user_verification_methods();
-                            if uv_methods.contains(&UserVerificationMethod::FingerprintInternal) {
-                                let methods = window.imp()
-                                    .internal_auth_methods
-                                    .get();
-                                let image = Image::builder()
-                                    .icon_name("fingerprint-symbolic")
-                                    .css_classes(["large-icons"])
-                                    .build();
-                                // TODO: Make this idempotent
-                                methods.append(&image);
-                                methods.set_visible(true);
-                            }
                         },
                         "'qr-start'" => {
                             let picture = window.imp().qr_code_img.get();
