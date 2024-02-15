@@ -11,7 +11,7 @@ use gtk::gdk::Texture;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{self, Cancellable, MemoryInputStream};
 use gtk::glib::{self, clone, Bytes, Object, Variant};
-use gtk::{prelude::*, Image};
+use gtk::{prelude::*, ToggleButton};
 use gtk::subclass::prelude::*;
 use gtk::{Box, Button, Label, Picture, Spinner};
 use qrcode::render::svg;
@@ -49,16 +49,28 @@ impl Window {
             return;
         }
 
+        let methods = self.imp()
+            .internal_auth_switchers
+            .get();
+        let pin_button = ToggleButton::builder()
+            .icon_name("dialpad-symbolic")
+            .css_classes(["large-icons"])
+            .build();
+
+        pin_button.set_active(true);
+        pin_button.connect_clicked(|button| {
+            
+        });
+        methods.append(&pin_button);
+
         let uv_methods = get_available_platform_user_verification_methods();
         if uv_methods.contains(&UserVerificationMethod::FingerprintInternal) {
-            let methods = self.imp()
-                .internal_auth_methods
-                .get();
-            let image = Image::builder()
+            let fingerprint_button = ToggleButton::builder()
                 .icon_name("fingerprint-symbolic")
-                .css_classes(["large-icons", "selected"])
+                .css_classes(["large-icons"])
                 .build();
-            methods.append(&image);
+            pin_button.set_group(Some(&fingerprint_button));
+            methods.append(&fingerprint_button);
             methods.set_visible(true);
         }
 

@@ -54,25 +54,45 @@ template $CredentialManagerWindow : ApplicationWindow {
             show-end-title-buttons: false;
           }
 
-          Label {
-            label: _("Enter your device PIN");
+          Stack internal_auth_views {
+            StackPage {
+              name: "pin";
+              child: Box {
+                orientation: vertical;
+                Label {
+                  label: _("Enter your device PIN");
+                }
+
+                Adw.PasswordEntryRow {
+                  entry-activated => $handle_device_pin_activated();
+                  title: "Device PIN";
+                }
+
+                Label {
+                  label: "";
+                }
+              };
+            }
+
+            StackPage {
+              name: "fingerprint";
+              child: Box {
+                orientation: vertical;
+                Adw.StatusPage {
+                  icon-name: "fingerprint-symbolic";
+                  title: "Touch your fingerprint sensor to authenticate";
+                }
+              };
+            }
           }
 
-          Adw.PasswordEntryRow {
-            entry-activated => $handle_device_pin_activated();
-            title: "Device PIN";
-          }
-
-          Label {
-            label: "";
-          }
           CenterBox {
             margin-top: 12;
             margin-bottom: 12;
             margin-start: 12;
             margin-end: 12;
 
-            center-widget: Box internal_auth_methods {
+            center-widget: Box internal_auth_switchers {
               visible: false;
               margin-top: 12;
               margin-bottom: 12;
@@ -80,10 +100,12 @@ template $CredentialManagerWindow : ApplicationWindow {
               margin-end: 12;
               spacing: 6;
           
+              /*
               Image {
                 icon-name: "dialpad-symbolic";
                 styles ["large-icons"]
               }
+              */
             };
           }
         };
