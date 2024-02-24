@@ -3,7 +3,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use adw::{NavigationPage, PasswordEntryRow};
-use gtk::gio;
+use gtk::{gio, StackPage};
 use gtk::glib;
 use gtk::glib::clone;
 use gtk::glib::subclass::InitializingObject;
@@ -31,6 +31,9 @@ pub struct Window {
 
     #[template_child]
     pub internal_authenticator_page: TemplateChild<NavigationPage>,
+
+    #[template_child]
+    pub fingerprint_stack_page: TemplateChild<StackPage>,
 
     #[template_child]
     pub linked_device_page: TemplateChild<NavigationPage>,

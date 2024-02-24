@@ -267,20 +267,25 @@ pub(crate) /* TODO: async */ fn get_available_platform_user_verification_methods
     ]
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum FingerprintScanType {
     Swipe,
     Touch,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct FingerprintRequest {
     pub(crate) scan_type: FingerprintScanType,
     poll_count: i32,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) enum FingerprintPollResponse {
     Waiting,
     Retry, // Add other types? Cf. https://fprint.freedesktop.org/libfprint-dev/FpDevice.html#FpDeviceRetry
     Completed,
+    
+    Start,
     UserCancelled,
 }
 
