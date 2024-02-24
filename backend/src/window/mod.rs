@@ -10,15 +10,15 @@ use adw::{NavigationPage, StatusPage};
 use gtk::gdk::Texture;
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::gio::{self, Cancellable, MemoryInputStream};
-use gtk::glib::{self, clone, Bytes, Object, Variant};
-use gtk::{prelude::*, ToggleButton};
+use gtk::glib::{self, clone, Bytes, GString, Object, Variant};
+use gtk::{prelude::*, StackPage, ToggleButton};
 use gtk::subclass::prelude::*;
 use gtk::{Box, Button, Label, Picture, Spinner};
 use qrcode::render::svg;
 use qrcode::QrCode;
 
 use crate::portal::frontend::{
-    self, cancel_device_discovery_hybrid, cancel_device_discovery_usb, get_available_platform_user_verification_methods, poll_device_discovery_usb, start_device_discovery_hybrid, start_device_discovery_usb, HybridPollResponse, UsbPollResponse, UserVerificationMethod
+    self, cancel_device_discovery_fingerprint, cancel_device_discovery_hybrid, cancel_device_discovery_usb, get_available_platform_user_verification_methods, poll_device_discovery_fingerprint, poll_device_discovery_usb, start_device_discovery_fingerprint, start_device_discovery_hybrid, start_device_discovery_usb, FingerprintPollResponse, HybridPollResponse, UsbPollResponse, UserVerificationMethod
 };
 use crate::portal::frontend::{poll_device_discovery_hybrid, DeviceTransport};
 
@@ -52,15 +52,22 @@ impl Window {
         let methods = self.imp()
             .internal_auth_switchers
             .get();
+        let views = self.imp()
+            .internal_auth_views
+            .get();
         let pin_button = ToggleButton::builder()
             .icon_name("dialpad-symbolic")
             .css_classes(["large-icons"])
             .build();
 
-        pin_button.set_active(true);
-        pin_button.connect_clicked(|button| {
-            
-        });
+        {
+            let views = views.clone();
+            pin_button.set_active(true);
+            pin_button.connect_clicked(move |_| {
+                let pin_view = views.child_by_name("pin").unwrap();
+                views.set_visible_child(&pin_view);
+            });
+        }
         methods.append(&pin_button);
 
         let uv_methods = get_available_platform_user_verification_methods();
@@ -69,6 +76,31 @@ impl Window {
                 .icon_name("fingerprint-symbolic")
                 .css_classes(["large-icons"])
                 .build();
+            let (sender, receiver) = async_channel::bounded(2);
+            let fingerprint_view = views
+                .child_by_name("fingerprint")
+                .unwrap()
+                .downcast_ref::<StackPage>()
+                .expect("widget to be StackPage");
+            start_fingerprint_flow(&fingerprint_view, sender.clone(), receiver);
+            views.connect_notify(Some("visible-child"), move |w, _| {
+                if let Some(name) = w.visible_child_name() {
+                    if name.as_str() == "fingerprint" {
+                        start_device_discovery_fingerprint().unwrap();
+                    } else {
+                        sender.send_blocking(FingerprintPollResponse::UserCancelled)
+                        .expect("channel to be open");
+                        // cancel_device_discovery_fingerprint(request).unwrap();
+                    }
+                }
+            });
+            let views = views.clone();
+            fingerprint_view.connect_hide(move |_| {
+                println!("fingerprint: hidden");
+            });
+            fingerprint_button.connect_clicked(move |_| {
+                views.set_visible_child(&fingerprint_view);
+            });
             pin_button.set_group(Some(&fingerprint_button));
             methods.append(&fingerprint_button);
             methods.set_visible(true);
@@ -118,6 +150,7 @@ impl Window {
                     let t = Variant::from_str(target).expect("from_str to work");
                     match target {
                         "'internal-authenticator-start'" => {
+
                         },
                         "'qr-start'" => {
                             let picture = window.imp().qr_code_img.get();
@@ -417,6 +450,103 @@ fn start_usb_flow(page: &NavigationPage) {
                 UsbPollResponse::Completed => {
                     println!("backend: Got credential!");
                     label
+                        .activate_action("navigation.push", Some(&"finish".into()))
+                        .expect("navigation.push action to exist");
+                }
+                _ => {},
+            }
+        }
+    }));
+}
+
+fn start_fingerprint_flow(page: &StackPage, sender: Sender<FingerprintPollResponse>, receiver: Receiver<FingerprintPollResponse>) {
+    let b = page.child();
+    let container = b.downcast_ref::<Box>().expect("child to be box");
+    let status_page = container
+        .first_child()
+        .expect("child to exist");
+    let status_page = status_page
+        .downcast_ref::<StatusPage>()
+        .expect("sibling to be Label");
+    status_page.set_description(Some("Touch fingerprint"));
+    let spinner = status_page.next_sibling().expect("Sibling to exist");
+    spinner
+        .downcast_ref::<Spinner>()
+        .expect("sibling to be Spinner")
+        .set_spinning(true);
+    spinner.set_visible(true);
+
+    // let mut request = start_device_discovery_fingerprint().unwrap();
+    // let (sender, receiver) = async_channel::bounded(2);
+    // let s1 = sender.clone();
+    // page.connect_notify(move |_| {
+    //     if !s1.is_closed() {
+    //         s1.send_blocking(FingerprintPollResponse::UserCancelled)
+    //             .expect("channel to be open");
+    //         cancel_device_discovery_fingerprint(&request);
+    //     }
+    // });
+    gio::spawn_blocking(move || {
+        let mut state = FingerprintPollResponse::Waiting;
+        while let Ok(notification) = poll_device_discovery_fingerprint(&mut request) {
+            if sender.is_closed() {
+                break;
+            }
+            match (state, notification) {
+                (FingerprintPollResponse::Waiting, FingerprintPollResponse::Retry) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                },
+                (FingerprintPollResponse::Retry, FingerprintPollResponse::Waiting) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                },
+                (_, FingerprintPollResponse::Completed) => {
+                    sender
+                        .send_blocking(notification)
+                        .expect("The channel to be open");
+                },
+                (_, FingerprintPollResponse::UserCancelled) => {
+                    sender.close();
+                    break;
+                },
+                _ => {}
+            }
+            state = notification;
+
+            thread::sleep(Duration::from_millis(500));
+        }
+    });
+
+    glib::spawn_future_local(clone!(@weak status_page => async move {
+        while let Ok(notification) = receiver.recv().await {
+            if receiver.is_closed() {
+                break;
+            }
+            match notification {
+                FingerprintPollResponse::UserCancelled => {
+                    println!("backend: Cancelled fingerprint flow");
+                    status_page.set_description(None);
+                    let spinner = status_page.next_sibling()
+                        .expect("Sibling to exist");
+                    spinner.set_visible(false);
+                    receiver.close();
+                    break;
+                }
+                FingerprintPollResponse::Retry => {
+                    status_page.set_description(Some("Fingerprint not read, try again."));
+                    let spinner = status_page.next_sibling()
+                        .expect("Sibling to exist");
+                    spinner.downcast_ref::<Spinner>()
+                        .expect("sibling to be Spinner")
+                        .set_spinning(true);
+                    spinner.set_visible(true);
+                },
+                FingerprintPollResponse::Completed => {
+                    println!("backend: Got credential!");
+                    status_page
                         .activate_action("navigation.push", Some(&"finish".into()))
                         .expect("navigation.push action to exist");
                 }

@@ -267,4 +267,44 @@ pub(crate) /* TODO: async */ fn get_available_platform_user_verification_methods
     ]
 }
 
-pub(crate) fn start_device_discovery_fingerprint() {}
+pub(crate) enum FingerprintScanType {
+    Swipe,
+    Touch,
+}
+
+pub(crate) struct FingerprintRequest {
+    pub(crate) scan_type: FingerprintScanType,
+    poll_count: i32,
+}
+
+pub(crate) enum FingerprintPollResponse {
+    Waiting,
+    Retry, // Add other types? Cf. https://fprint.freedesktop.org/libfprint-dev/FpDevice.html#FpDeviceRetry
+    Completed,
+    UserCancelled,
+}
+
+pub(crate) fn start_device_discovery_fingerprint() -> Result<FingerprintRequest, ()> {
+    println!("frontend: Start fingerprint discovery");
+    Ok(FingerprintRequest { scan_type: FingerprintScanType::Touch, poll_count: 0 })
+}
+
+pub(crate) fn poll_device_discovery_fingerprint(request: &mut FingerprintRequest) -> Result<FingerprintPollResponse, ()> {
+    request.poll_count += 1;
+    if request.poll_count < 10 {
+        Ok(FingerprintPollResponse::Waiting)
+    } else if request.poll_count == 10 {
+        println!("frontend: Got bad fingerprint scan");
+        Ok(FingerprintPollResponse::Retry)
+    } else if request.poll_count < 20 {
+        Ok(FingerprintPollResponse::Waiting)
+    } else {
+        println!("frontend: Got successful fingerprint scan");
+        Ok(FingerprintPollResponse::Completed)
+    }
+}
+
+pub(crate) fn cancel_device_discovery_fingerprint(_request: &FingerprintRequest) -> Result<(), ()> {
+    println!("frontend: Cancel fingerprint scan");
+    Ok(())
+}
