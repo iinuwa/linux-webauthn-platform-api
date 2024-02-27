@@ -165,6 +165,12 @@ template $CredentialManagerWindow : ApplicationWindow {
             show-end-title-buttons: false;
           }
 
+          Adw.PasswordEntryRow {
+            entry-activated => $handle_usb_device_pin_activated();
+            title: "Device PIN";
+            visible: false;
+          }
+
           Label {
             label: _("Insert your security key");
           }
@@ -172,6 +178,7 @@ template $CredentialManagerWindow : ApplicationWindow {
           Spinner {
             spinning: true;
           }
+
         };
       }
 

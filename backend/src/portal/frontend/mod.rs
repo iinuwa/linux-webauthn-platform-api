@@ -152,13 +152,18 @@ pub(crate) fn cancel_device_discovery_hybrid(_request: &HybridRequest) {
 pub(crate) struct UsbRequest {
     poll_count: i32,
     state: UsbPollResponse,
+    needs_pin: bool,
+    pin_entered: bool,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum UsbPollResponse {
-    /// Awaiting BLE advert from phone.
+    /// Awaiting FIDO USB device to be plugged in.
     Waiting,
 
+    /// The device needs the PIN to be entered.
+    NeedsPin,
+    
     /// USB device connected, prompt user to tap
     Connected,
 
@@ -175,6 +180,8 @@ pub(crate) fn start_device_discovery_usb() -> Result<UsbRequest, ()> {
     Ok(UsbRequest {
         poll_count: 0,
         state: UsbPollResponse::Waiting,
+        needs_pin: true, // This may be false for U2F devices or devices that don't support user verification.
+        pin_entered: false,
     })
 }
 
@@ -193,6 +200,12 @@ pub(crate) fn poll_device_discovery_usb(request: &mut UsbRequest) -> Result<UsbP
             println!("frontend: Discovered FIDO USB key");
         }
         request.state = UsbPollResponse::Connected
+    } else if request.needs_pin && !request.pin_entered {
+        if let UsbPollResponse::NeedsPin = request.state {
+        } else {
+            println!("frontend: FIDO USB token requested PIN unlock");
+        }
+        request.state = UsbPollResponse::NeedsPin;
     } else {
         if let UsbPollResponse::Completed = request.state {
         } else {
@@ -218,6 +231,16 @@ pub enum PinResponse {
     /// PIN locked out, contains time (in seconds since Unix epoch) when
     /// the user can retry.
     Locked(Duration),
+}
+
+#[allow(clippy::borrow_interior_mutable_const)] // This is just for demo purposes.
+pub(crate) fn validate_usb_device_pin(/* request: &mut UsbRequest, */ pin: &str) -> Result<bool, ()> {
+    if pin == "123456" {
+        // request.state = UsbPollResponse::Completed;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 static PIN_COUNT: AtomicUsize = AtomicUsize::new(0);

@@ -375,9 +375,9 @@ fn start_usb_flow(page: &NavigationPage) {
     let b = page.child();
     let container = b.and_downcast_ref::<Box>().expect("child to be box");
     let label = container
-        .first_child()
+        .last_child()
         .expect("child to exist")
-        .next_sibling();
+        .prev_sibling();
     let label = label
         .and_downcast_ref::<Label>()
         .expect("sibling to be Label");
@@ -405,23 +405,16 @@ fn start_usb_flow(page: &NavigationPage) {
             if sender.is_closed() {
                 break;
             }
-            match (state, notification) {
-                (UsbPollResponse::Waiting, UsbPollResponse::Connected) => {
-                    sender
-                        .send_blocking(notification)
-                        .expect("The channel to be open");
-                }
-                (_, UsbPollResponse::Completed) => {
-                    sender
-                        .send_blocking(notification)
-                        .expect("The channel to be open");
-                }
-                (_, UsbPollResponse::UserCancelled) => {
-                    sender.close();
-                    break;
-                }
-                _ => {}
+            if state == notification {
+                continue;
             }
+            if notification == UsbPollResponse::UserCancelled {
+                sender.close();
+                break;
+            }
+            sender
+                .send_blocking(notification)
+                .expect("The channel to be open");
             state = notification;
 
             thread::sleep(Duration::from_millis(500));
@@ -451,6 +444,18 @@ fn start_usb_flow(page: &NavigationPage) {
                         .expect("sibling to be Spinner")
                         .set_spinning(true);
                     spinner.set_visible(true);
+                },
+                UsbPollResponse::NeedsPin => {
+                    let entry = label.prev_sibling()
+                        .expect("Sibling to exist");
+                    entry.set_visible(true);
+                    label.set_label("Enter your device pin");
+                    let spinner = label.next_sibling()
+                        .expect("Sibling to exist");
+                    spinner.downcast_ref::<Spinner>()
+                        .expect("sibling to be Spinner")
+                        .set_spinning(false);
+                    spinner.set_visible(false);
                 },
                 UsbPollResponse::Completed => {
                     println!("backend: Got credential!");

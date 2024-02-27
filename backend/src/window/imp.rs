@@ -11,7 +11,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{Box, Button, CompositeTemplate, Label, Picture, Stack};
 
-use crate::portal::frontend::{validate_device_pin, Device, PinResponse};
+use crate::portal::frontend::{validate_device_pin, validate_usb_device_pin, Device, PinResponse};
 use crate::views::device_chooser::DeviceChooser;
 
 #[derive(CompositeTemplate, Default)]
@@ -110,6 +110,28 @@ impl Window {
                             .set_label(format!("Device locked out. Try again in {} seconds", lockout_duration.as_secs()).as_str());
                     }));
                 }
+            }
+        }
+    }
+
+    #[template_callback]
+    fn handle_usb_device_pin_activated(entry: &PasswordEntryRow) {
+        let text = entry.text();
+        let pin = text.as_str();
+        if let Ok(pin_correct) = validate_usb_device_pin(pin) {
+            if pin_correct {
+                // TODO: For consistency, is it worth it to make the frontend
+                // change the request state to Completed rather than assuming
+                // done on valid PIN?
+                entry
+                    .activate_action("navigation.push", Some(&"finish".into()))
+                    .expect("navigation.push action to exist.");
+            } else {
+                let label = entry.next_sibling();
+                let label = label
+                    .and_downcast_ref::<Label>()
+                    .expect("sibling to be a label");
+                label.set_label("PIN incorrect.");
             }
         }
     }
