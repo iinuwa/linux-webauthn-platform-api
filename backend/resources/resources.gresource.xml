@@ -8,6 +8,7 @@
     <file compressed="true" preprocess="xml-stripblanks">check-round-outline-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">dialpad-symbolic.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">fingerprint-symbolic.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks">symbolic-link-symbolic.svg</file>
   </gresource>
   <gresource prefix="/xyz/iinuwa/CredentialManager1/styles">
     <file compressed="true">custom.css</file>

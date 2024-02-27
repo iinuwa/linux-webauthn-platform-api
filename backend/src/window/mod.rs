@@ -19,7 +19,7 @@ use qrcode::render::svg;
 use qrcode::QrCode;
 
 use crate::portal::frontend::{
-    self, cancel_device_discovery_fingerprint, cancel_device_discovery_hybrid, cancel_device_discovery_usb, get_available_platform_user_verification_methods, poll_device_discovery_fingerprint, poll_device_discovery_usb, start_device_discovery_fingerprint, start_device_discovery_hybrid, start_device_discovery_usb, FingerprintPollResponse, FingerprintRequest, HybridPollResponse, UsbPollResponse, UserVerificationMethod
+    self, cancel_device_discovery_fingerprint, cancel_device_discovery_hybrid, cancel_device_discovery_usb, get_available_platform_user_verification_methods, poll_device_discovery_fingerprint, poll_device_discovery_passkey_provider, poll_device_discovery_usb, start_device_discovery_fingerprint, start_device_discovery_hybrid, start_device_discovery_passkey_provider, start_device_discovery_usb, FingerprintPollResponse, FingerprintRequest, HybridPollResponse, PasskeyProviderResponse, UsbPollResponse, UserVerificationMethod
 };
 use crate::portal::frontend::{poll_device_discovery_hybrid, DeviceTransport};
 
@@ -134,6 +134,12 @@ impl Window {
                     None,
                     "'security-key-start'",
                 )),
+                DeviceTransport::PasskeyProvider => Some((
+                    "symbolic-link-symbolic",
+                    "ACME Password Manager",
+                    None,
+                    "'passkey-provider-start'",
+                )),
                 _ => None,
             } {
                 let content = if let Some(name) = name {
@@ -164,11 +170,15 @@ impl Window {
                         "'security-key-start'" => {
                             let usb_page = window.imp().usb_page.get();
                             start_usb_flow(&usb_page);
-                        }
+                        },
                         "'linked-start'" => {
                             // TODO: Maybe the hybrid ones can share a page
                             let linked_page = window.imp().linked_device_page.get();
                             start_linked_device_flow(&linked_page, name.clone());
+                        },
+                        "'passkey-provider-start'" => {
+                            let provider_page = window.imp().provider_page.get();
+                            start_provider_page_flow(&provider_page);
                         },
                         _ => {},
                     }
@@ -559,5 +569,34 @@ fn start_fingerprint_flow(container: &Box, sender: Sender<FingerprintPollRespons
             }
         }
     }));
+}
 
+fn start_provider_page_flow(provider_page: &NavigationPage) {
+    let mut request = start_device_discovery_passkey_provider().unwrap();
+    let (sender, receiver) = async_channel::bounded(1);
+    glib::spawn_future_local(clone!(@weak provider_page => async move {
+        while let Ok(notification) = receiver.recv().await {
+            if notification == PasskeyProviderResponse::Completed {
+                provider_page
+                    .activate_action("navigation.push", Some(&"finish".into()))
+                    .expect("navigation.push action to exist");
+                break;
+            }
+        }
+    }));
+    gio::spawn_blocking(move || {
+        let mut state = PasskeyProviderResponse::Waiting;
+        let sender = sender.clone();
+        while let Ok(notification) = poll_device_discovery_passkey_provider(&mut request) {
+            if state == notification {
+            } else if notification == PasskeyProviderResponse::Completed {
+                sender.send_blocking(notification)
+                    .expect("channel to be open");
+                break;
+            }
+            state = notification;
+
+            thread::sleep(Duration::from_millis(500));
+        }
+    });
 }

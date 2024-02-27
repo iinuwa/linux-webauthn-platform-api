@@ -18,6 +18,7 @@ pub(crate) enum DeviceTransport {
     HybridQr,
     Internal,
     Nfc,
+    PasskeyProvider,
     Usb,
 }
 
@@ -42,6 +43,10 @@ pub(crate) fn get_available_public_key_devices() -> Result<Vec<Device>, ()> {
         Device {
             id: String::from("4"),
             transport: DeviceTransport::Usb,
+        },
+        Device {
+            id: String::from("5"),
+            transport: DeviceTransport::PasskeyProvider,
         },
     ])
 }
@@ -334,5 +339,51 @@ pub(crate) fn poll_device_discovery_fingerprint(request: &mut FingerprintRequest
 
 pub(crate) fn cancel_device_discovery_fingerprint(_request: &FingerprintRequest) -> Result<(), ()> {
     println!("frontend: Cancel fingerprint scan");
+    Ok(())
+}
+
+#[derive(PartialEq)]
+pub enum PasskeyProviderResponse {
+    /// Waiting on response from passkey provider
+    Waiting,
+
+    /// Completed request from provider
+    Completed,
+
+    UserCancelled,
+}
+
+pub struct PasskeyProviderRequest {
+    state: PasskeyProviderResponse,
+    poll_count: i32,
+}
+
+pub(crate) fn start_device_discovery_passkey_provider() -> Result<PasskeyProviderRequest, ()> {
+    println!("frontend: Start passkey provider discovery");
+    // This should send a message to the passkey provider with a copy of the WebAuthn request options and a request object.
+    // The passkey provider should open a window in response.
+    Ok(PasskeyProviderRequest { state: PasskeyProviderResponse::Waiting, poll_count: 0 })
+}
+
+pub(crate) fn poll_device_discovery_passkey_provider(request: &mut PasskeyProviderRequest) -> Result<PasskeyProviderResponse, ()> {
+    request.poll_count += 1;
+    if request.poll_count < 20 {
+        Ok(PasskeyProviderResponse::Waiting)
+    } else {
+        println!("frontend: Got credential from passkey provider");
+        request.state = PasskeyProviderResponse::Completed;
+        Ok(PasskeyProviderResponse::Completed)
+    }
+}
+
+/// Called by the passkey provider to convey the credential the user chose to use.
+pub(crate) fn select_device_discovery_passkey_provider(request: &mut PasskeyProviderRequest, credential: String) -> Result<(), ()> {
+    request.state = PasskeyProviderResponse::Completed;
+    Ok(())
+}
+
+pub(crate) fn cancel_device_discovery_passkey_provider(_request: &PasskeyProviderRequest) -> Result<(), ()> {
+    // request.state = PasskeyProviderResponse::UserCancelled;
+    println!("frontend: User cancelled passkey provider discovery");
     Ok(())
 }

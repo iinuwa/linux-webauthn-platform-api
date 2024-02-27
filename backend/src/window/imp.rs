@@ -39,6 +39,9 @@ pub struct Window {
     pub linked_device_page: TemplateChild<NavigationPage>,
 
     #[template_child]
+    pub provider_page: TemplateChild<NavigationPage>,
+
+    #[template_child]
     pub qr_page: TemplateChild<NavigationPage>,
 
     #[template_child]

@@ -178,7 +178,26 @@ template $CredentialManagerWindow : ApplicationWindow {
           Spinner {
             spinning: true;
           }
+        };
+      }
 
+      Adw.NavigationPage provider_page {
+        title: _("Passkey Provider");
+        tag: "passkey-provider-start";
+        child: Box {
+          orientation: vertical;
+          [top]
+          Adw.HeaderBar {
+            show-end-title-buttons: false;
+          }
+
+          Label {
+            label: _("Follow the prompts from your passkey provider");
+          }
+
+          Spinner {
+            spinning: true;
+          }
         };
       }
 
