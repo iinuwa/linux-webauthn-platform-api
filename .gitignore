@@ -1,16 +1,20 @@
-/target
-/env
-
-# Added by cargo
-#
-# already existing elements were commented out
-
-#/target
+# Rust
+target/
 /Cargo.lock
 
+# Python
+/env
 
-# Added by cargo
-#
-# already existing elements were commented out
+# Build
+/build/
+/_build/
+/builddir/
+/build-aux/app
+/build-aux/.flatpak-builder/
+*.ui.in~
+*.ui~
+/.flatpak/
+/vendor
 
-#/target
+# IDE
+/.vscode

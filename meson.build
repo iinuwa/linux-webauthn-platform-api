@@ -1,0 +1,27 @@
+project(
+  'xyz-iinuwa-credential-manager-portal-gtk',
+  'rust',
+  version: '0.1.0',
+  meson_version: '>= 0.59',
+  # license: 'MIT',
+)
+
+version = meson.project_version()
+
+prefix = get_option('prefix')
+bindir = prefix / get_option('bindir')
+localedir = prefix / get_option('localedir')
+
+meson.add_dist_script(
+  'build-aux/dist-vendor.sh',
+  meson.project_build_root() / 'meson-dist' / meson.project_name() + '-' + version,
+  meson.project_source_root()
+)
+
+if get_option('profile') == 'development'
+  # Setup pre-commit hook for ensuring coding style is always consistent
+  message('Setting up git pre-commit hook..')
+  run_command('cp', '-f', 'hooks/pre-commit.hook', '.git/hooks/pre-commit', check: false)
+endif
+
+subdir('xyz-iinuwa-credential-manager-portal-gtk')

@@ -1,0 +1,6 @@
+data/xyz.iinuwa.CredentialManager.desktop.in.in
+data/xyz.iinuwa.CredentialManager.gschema.xml.in
+data/xyz.iinuwa.CredentialManager.metainfo.xml.in.in
+data/resources/ui/shortcuts.ui
+data/resources/ui/window.ui
+src/application.rs

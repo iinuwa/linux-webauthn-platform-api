@@ -1,0 +1,15 @@
+[package]
+name = "xyz-iinuwa-credential-manager-portal-gtk"
+version = "0.1.0"
+authors = ["Isaiah Inuwa <isaiah.inuwa@gmail.com>"]
+edition = "2021"
+
+[profile.release]
+lto = true
+
+[dependencies]
+gettext-rs = { version = "0.7", features = ["gettext-system"] }
+gtk = { version = "0.8", package = "gtk4", features = ["v4_6"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3"
+zbus = "4.1.2"
