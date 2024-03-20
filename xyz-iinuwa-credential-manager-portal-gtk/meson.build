@@ -2,7 +2,7 @@ i18n = import('i18n')
 gnome = import('gnome')
 
 backend_executable_name = 'xyz-iinuwa-credential-manager-portal-gtk'
-base_id = 'xyz.iinuwa.CredentialManager'
+base_id = 'xyz.iinuwa.CredentialManagerUi'
 
 dependency('glib-2.0', version: '>= 2.66')
 dependency('gio-2.0', version: '>= 2.66')

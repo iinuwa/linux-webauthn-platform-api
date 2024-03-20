@@ -7,6 +7,18 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'xicm-portal-gtk'",
+            "program": "${workspaceFolder}/build/xyz-iinuwa-credential-manager-portal-gtk/src/xyz-iinuwa-credential-manager-portal-gtk",
+            "args": [],
+            "env": {
+                "GSETTINGS_SCHEMA_DIR": "${workspaceFolder}/build/xyz-iinuwa-credential-manager-portal-gtk/data"
+            },
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Meson: Build all targets"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'backend'",
             "cargo": {
                 "args": [
