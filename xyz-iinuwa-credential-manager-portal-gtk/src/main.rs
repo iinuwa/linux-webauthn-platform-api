@@ -2,6 +2,7 @@ mod application;
 #[rustfmt::skip]
 mod config;
 mod dbus;
+mod view_model;
 mod window;
 
 use std::error::Error;
