@@ -5,8 +5,8 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib};
 
-use crate::view_model::gtk::ViewModel;
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
+use crate::view_model::gtk::ViewModel;
 use crate::window::ExampleApplicationWindow;
 
 mod imp {
@@ -116,9 +116,7 @@ impl ExampleApplication {
         }
     }
 
-    fn setup_view_model(&self) {
-
-    }
+    fn setup_view_model(&self) {}
 
     fn show_about_dialog(&self) {
         let dialog = gtk::AboutDialog::builder()
@@ -146,7 +144,6 @@ impl ExampleApplication {
     }
 
     pub fn new(view_model: ViewModel) -> Self {
-
         let app: Self = glib::Object::builder()
             .property("application-id", APP_ID)
             .property("resource-base-path", "/xyz/iinuwa/CredentialManager/")

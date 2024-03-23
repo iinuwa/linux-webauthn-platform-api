@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 
+use glib::Properties;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
-use glib::Properties;
 
 use crate::application::ExampleApplication;
 use crate::config::{APP_ID, PROFILE};

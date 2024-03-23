@@ -28,15 +28,15 @@ struct ViewModel<'a> {
 }
 
 impl ViewModel<'_> {
-    fn start_authentication(&self) { } // open page
-    fn cancel_authentication(&self) { }
+    fn start_authentication(&self) {} // open page
+    fn cancel_authentication(&self) {}
 
     fn start_fingerprint_authentication(&self) {
         todo!("not implemented");
     }
-    fn cancel_fingerprint_authentication(&self) { }
+    fn cancel_fingerprint_authentication(&self) {}
 
-    fn start_hybrid_qr_authentication(&self) { }
+    fn start_hybrid_qr_authentication(&self) {}
     fn cancel_hybrid_qr_authentication(&self) {
         todo!("not implemented");
     }
@@ -75,13 +75,12 @@ impl ViewModel<'_> {
     }
 }
 
-
 pub struct Credential {
     id: String,
     name: String,
-    username: Option<String>
+    username: Option<String>,
 }
-pub enum FingerprintSensorState { }
+pub enum FingerprintSensorState {}
 
 pub enum CredentialType {
     Passkey,

@@ -9,8 +9,8 @@ use std::error::Error;
 
 use async_std::task;
 
-use self::application::ExampleApplication;
-use self::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
+
+
 
 fn main() {
     // Initialize logger

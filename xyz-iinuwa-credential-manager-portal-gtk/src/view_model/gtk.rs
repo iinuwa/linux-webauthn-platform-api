@@ -1,10 +1,9 @@
-
 use gtk::glib;
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
-use super::HybridState;
+
 
 mod imp {
     use std::cell::RefCell;
@@ -44,6 +43,6 @@ impl ViewModel {
 
 impl Default for ViewModel {
     fn default() -> Self {
-        Self::new(&String::new())
+        Self::new("")
     }
 }

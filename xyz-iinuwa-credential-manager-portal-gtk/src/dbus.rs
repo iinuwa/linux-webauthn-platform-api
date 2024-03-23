@@ -1,15 +1,15 @@
+use std::sync::mpsc;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::mpsc;
 use std::thread;
 
 // use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 // use base64::Engine;
 use gettextrs::{gettext, LocaleCategory};
 use gtk::{gio, glib};
-use zbus::zvariant::{DeserializeDict, SerializeDict};
-use zbus::{fdo, interface, zvariant::Type, Connection, ConnectionBuilder, Result};
+
+use zbus::{interface, Connection, ConnectionBuilder, Result};
 
 use crate::application::ExampleApplication;
 use crate::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
@@ -17,10 +17,7 @@ use crate::view_model::gtk::ViewModel;
 // use crate::store;
 // use crate::webauthn;
 
-pub(crate) async fn start_service(
-    service_name: &str,
-    path: &str,
-) -> Result<Connection> {
+pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Connection> {
     let lock = Arc::new(Mutex::new(false));
     let lock2 = lock.clone();
     let (tx, rx) = mpsc::channel::<()>();
@@ -31,26 +28,35 @@ pub(crate) async fn start_service(
                 if let Ok(()) = rx.recv() {
                     // Prepare i18n
                     gettextrs::setlocale(LocaleCategory::LcAll, "");
-                    gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
-                    gettextrs::textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
+                    gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR)
+                        .expect("Unable to bind the text domain");
+                    gettextrs::textdomain(GETTEXT_PACKAGE)
+                        .expect("Unable to switch to the text domain");
                     glib::set_application_name(&gettext("Credential Manager"));
 
-                    let res = gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
+                    let res =
+                        gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
                     gio::resources_register(&res);
                     let view_model = ViewModel::new("Testing");
                     let app = ExampleApplication::new(view_model);
                     app.run();
                     let mut running = lock2.lock().unwrap();
                     *running = false;
-                }
-                else {
+                } else {
                     break;
                 }
             }
-        }).unwrap();
+        })
+        .unwrap();
     ConnectionBuilder::session()?
         .name(service_name)?
-        .serve_at(path, CredentialManager { app_signaller: tx, app_lock: lock })?
+        .serve_at(
+            path,
+            CredentialManager {
+                app_signaller: tx,
+                app_lock: lock,
+            },
+        )?
         .build()
         .await
 }
@@ -66,10 +72,8 @@ impl CredentialManager {
             if !*running {
                 *running = true;
                 self.app_signaller.send(()).unwrap();
-            }
-            else {
+            } else {
                 tracing::debug!("Window already open");
-
             }
         } else {
             tracing::debug!("Window already open");
