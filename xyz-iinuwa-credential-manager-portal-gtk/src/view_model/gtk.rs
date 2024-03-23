@@ -1,9 +1,11 @@
+use async_std::channel::{Receiver, Sender};
 use gtk::glib;
-
+use gtk::glib::clone;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use tracing::debug;
 
-
+use super::{ViewEvent, ViewUpdate};
 
 mod imp {
     use std::cell::RefCell;
@@ -15,6 +17,8 @@ mod imp {
     pub struct ViewModel {
         #[property(get, set)]
         pub title: RefCell<String>,
+        pub(super) rx: RefCell<Option<Receiver<ViewUpdate>>>,
+        pub(super) tx: RefCell<Option<Sender<ViewEvent>>>,
         // hybrid_qr_state: HybridState,
         // hybrid_qr_code_data: Option<Vec<u8>>,
     }
@@ -28,7 +32,7 @@ mod imp {
 
     // Trait shared by all GObjects
     #[glib::derived_properties]
-    impl ObjectImpl for ViewModel {}
+    impl ObjectImpl for ViewModel { }
 }
 
 glib::wrapper! {
@@ -36,13 +40,29 @@ glib::wrapper! {
 }
 
 impl ViewModel {
-    pub fn new(title: &str) -> Self {
-        glib::Object::builder().property("title", title).build()
+    pub fn new(title: &str, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
+        let view_model: Self = glib::Object::builder().property("title", title).build();
+        view_model.setup_channel(tx, rx);
+        view_model
     }
-}
 
-impl Default for ViewModel {
-    fn default() -> Self {
-        Self::new("")
+    fn setup_channel(&self, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) {
+        self.imp().tx.replace(Some(tx.clone()));
+        self.imp().rx.replace(Some(rx.clone()));
+        glib::spawn_future_local(clone!(@weak self as view_model => async move {
+            loop {
+                match rx.recv().await {
+                    Ok(update) => {
+                        match update {
+                            ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
+                        }
+                    },
+                    Err(e) => {
+                        debug!("ViewModel event listener interrupted: {}", e);
+                        break;
+                    }
+                }
+            }
+        }));
     }
 }

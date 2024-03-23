@@ -20,7 +20,7 @@ mod imp {
         pub headerbar: TemplateChild<gtk::HeaderBar>,
         pub settings: gio::Settings,
         #[property(get, set)]
-        pub view_model: RefCell<ViewModel>,
+        pub view_model: RefCell<Option<ViewModel>>,
     }
 
     impl Default for ExampleApplicationWindow {

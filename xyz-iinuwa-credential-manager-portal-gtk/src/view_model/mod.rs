@@ -75,6 +75,13 @@ impl ViewModel<'_> {
     }
 }
 
+pub enum ViewEvent {
+}
+
+pub enum ViewUpdate {
+    SetTitle(String),
+}
+
 pub struct Credential {
     id: String,
     name: String,
