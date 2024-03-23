@@ -13,7 +13,7 @@ use zbus::{fdo, interface, zvariant::Type, Connection, ConnectionBuilder, Result
 
 use crate::application::ExampleApplication;
 use crate::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
-use crate::view_model::GtkViewModel;
+use crate::view_model::gtk::ViewModel;
 // use crate::store;
 // use crate::webauthn;
 
@@ -37,7 +37,7 @@ pub(crate) async fn start_service(
 
                     let res = gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
                     gio::resources_register(&res);
-                    let view_model = GtkViewModel::new(String::from("Testing"));
+                    let view_model = ViewModel::new("Testing");
                     let app = ExampleApplication::new(view_model);
                     app.run();
                     let mut running = lock2.lock().unwrap();

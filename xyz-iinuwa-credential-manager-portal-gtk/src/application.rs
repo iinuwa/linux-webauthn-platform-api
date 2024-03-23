@@ -5,7 +5,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib};
 
-use crate::view_model::GtkViewModel;
+use crate::view_model::gtk::ViewModel;
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
 use crate::window::ExampleApplicationWindow;
 
@@ -17,7 +17,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct ExampleApplication {
         pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
-        pub(super) view_model: OnceCell<GtkViewModel>,
+        pub(super) view_model: OnceCell<ViewModel>,
     }
 
     #[glib::object_subclass]
@@ -145,7 +145,7 @@ impl ExampleApplication {
         ApplicationExtManual::run(self)
     }
 
-    pub fn new(view_model: GtkViewModel) -> Self {
+    pub fn new(view_model: ViewModel) -> Self {
 
         let app: Self = glib::Object::builder()
             .property("application-id", APP_ID)

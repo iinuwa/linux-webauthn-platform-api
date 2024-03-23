@@ -1,26 +1,26 @@
 use std::cell::RefCell;
-use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
+use glib::Properties;
 
 use crate::application::ExampleApplication;
 use crate::config::{APP_ID, PROFILE};
-use crate::view_model::GtkViewModel;
+use crate::view_model::gtk::ViewModel;
 
 mod imp {
     use super::*;
 
-    #[derive(Debug, gtk::CompositeTemplate)]
+    #[derive(Debug, Properties, gtk::CompositeTemplate)]
+    #[properties(wrapper_type = super::ExampleApplicationWindow)]
     #[template(resource = "/xyz/iinuwa/CredentialManager/ui/window.ui")]
     pub struct ExampleApplicationWindow {
         #[template_child]
         pub headerbar: TemplateChild<gtk::HeaderBar>,
         pub settings: gio::Settings,
-        pub view_model: RefCell<GtkViewModel>,
-        #[template_child]
-        pub label1: TemplateChild<gtk::Label>,
+        #[property(get, set)]
+        pub view_model: RefCell<ViewModel>,
     }
 
     impl Default for ExampleApplicationWindow {
@@ -29,7 +29,6 @@ mod imp {
                 headerbar: TemplateChild::default(),
                 settings: gio::Settings::new(APP_ID),
                 view_model: RefCell::default(),
-                label1: TemplateChild::default(),
             }
         }
     }
@@ -50,6 +49,7 @@ mod imp {
         }
     }
 
+    #[glib::derived_properties]
     impl ObjectImpl for ExampleApplicationWindow {
         fn constructed(&self) {
             self.parent_constructed();
@@ -89,12 +89,11 @@ glib::wrapper! {
 }
 
 impl ExampleApplicationWindow {
-    pub fn new(app: &ExampleApplication, view_model: GtkViewModel) -> Self {
-        let window: Self = glib::Object::builder().property("application", app).build();
-        let title = (&view_model).title.clone();
-        *window.imp().view_model.borrow_mut() = view_model;
-        window.imp().label1.set_label(&title);
-        window
+    pub fn new(app: &ExampleApplication, view_model: ViewModel) -> Self {
+        glib::Object::builder()
+            .property("application", app)
+            .property("view-model", view_model)
+            .build()
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {

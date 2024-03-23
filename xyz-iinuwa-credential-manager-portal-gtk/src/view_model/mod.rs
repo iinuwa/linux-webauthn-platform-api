@@ -1,3 +1,5 @@
+pub mod gtk;
+
 use std::time::Duration;
 
 struct ViewModel<'a> {
@@ -70,30 +72,6 @@ impl ViewModel<'_> {
 
     fn select_device(&self) {
         todo!("not implemented");
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GtkViewModel {
-    pub title: String,
-    hybrid_qr_state: HybridState,
-    hybrid_qr_code_data: Option<Vec<u8>>,
-
-}
-
-impl GtkViewModel {
-    pub fn new(title: String) -> Self{
-        Self {
-            title,
-            hybrid_qr_state: HybridState::Idle,
-            hybrid_qr_code_data: None,
-        }
-    }
-}
-
-impl Default for GtkViewModel {
-    fn default() -> Self {
-        Self::new(String::new())
     }
 }
 

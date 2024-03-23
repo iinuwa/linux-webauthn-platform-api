@@ -30,8 +30,14 @@
       </object>
     </child>
     <child>
-      <object class="GtkLabel" id="label1">
-        <property name="label" translatable="yes"></property>
+      <object class="GtkLabel">
+        <binding name="label">
+          <lookup name="title">
+            <lookup name="view-model">
+              ExampleApplicationWindow
+            </lookup>
+          </lookup>
+        </binding>
         <style>
           <class name="title-header"/>
         </style>
