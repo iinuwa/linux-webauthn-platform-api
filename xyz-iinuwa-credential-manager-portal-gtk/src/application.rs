@@ -5,6 +5,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gdk, gio, glib};
 
+use crate::view_model::GtkViewModel;
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
 use crate::window::ExampleApplicationWindow;
 
@@ -16,6 +17,7 @@ mod imp {
     #[derive(Debug, Default)]
     pub struct ExampleApplication {
         pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
+        pub(super) view_model: OnceCell<GtkViewModel>,
     }
 
     #[glib::object_subclass]
@@ -39,7 +41,8 @@ mod imp {
                 return;
             }
 
-            let window = ExampleApplicationWindow::new(&app);
+            let view_model = self.view_model.get().expect("view model to exist");
+            let window = ExampleApplicationWindow::new(&app, view_model.clone());
             self.window
                 .set(window.downgrade())
                 .expect("Window already set.");
@@ -58,6 +61,7 @@ mod imp {
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
+            app.setup_view_model();
         }
     }
 
@@ -112,6 +116,10 @@ impl ExampleApplication {
         }
     }
 
+    fn setup_view_model(&self) {
+
+    }
+
     fn show_about_dialog(&self) {
         let dialog = gtk::AboutDialog::builder()
             .logo_icon_name(APP_ID)
@@ -136,8 +144,19 @@ impl ExampleApplication {
 
         ApplicationExtManual::run(self)
     }
+
+    pub fn new(view_model: GtkViewModel) -> Self {
+
+        let app: Self = glib::Object::builder()
+            .property("application-id", APP_ID)
+            .property("resource-base-path", "/xyz/iinuwa/CredentialManager/")
+            .build();
+        app.imp().view_model.get_or_init(|| view_model);
+        app
+    }
 }
 
+/*
 impl Default for ExampleApplication {
     fn default() -> Self {
         glib::Object::builder()
@@ -146,3 +165,4 @@ impl Default for ExampleApplication {
             .build()
     }
 }
+*/

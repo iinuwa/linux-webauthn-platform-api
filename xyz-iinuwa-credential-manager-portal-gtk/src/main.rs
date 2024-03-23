@@ -24,7 +24,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let service_name = "xyz.iinuwa.credentials.CredentialManagerUi";
     let path = "/xyz/iinuwa/credentials/CredentialManagerUi";
     let _conn = dbus::start_service(service_name, path).await?;
-    /// store::initialize();
+    // store::initialize();
     // let _conn = dbus::start_service(service_name, path, seed_key).await?;
     println!("Started");
     loop {

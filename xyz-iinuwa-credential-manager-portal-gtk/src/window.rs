@@ -1,9 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use gtk::{gio, glib};
 
 use crate::application::ExampleApplication;
 use crate::config::{APP_ID, PROFILE};
+use crate::view_model::GtkViewModel;
 
 mod imp {
     use super::*;
@@ -14,6 +18,9 @@ mod imp {
         #[template_child]
         pub headerbar: TemplateChild<gtk::HeaderBar>,
         pub settings: gio::Settings,
+        pub view_model: RefCell<GtkViewModel>,
+        #[template_child]
+        pub label1: TemplateChild<gtk::Label>,
     }
 
     impl Default for ExampleApplicationWindow {
@@ -21,6 +28,8 @@ mod imp {
             Self {
                 headerbar: TemplateChild::default(),
                 settings: gio::Settings::new(APP_ID),
+                view_model: RefCell::default(),
+                label1: TemplateChild::default(),
             }
         }
     }
@@ -76,11 +85,16 @@ glib::wrapper! {
     pub struct ExampleApplicationWindow(ObjectSubclass<imp::ExampleApplicationWindow>)
         @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow,
         @implements gio::ActionMap, gio::ActionGroup, gtk::Root;
+
 }
 
 impl ExampleApplicationWindow {
-    pub fn new(app: &ExampleApplication) -> Self {
-        glib::Object::builder().property("application", app).build()
+    pub fn new(app: &ExampleApplication, view_model: GtkViewModel) -> Self {
+        let window: Self = glib::Object::builder().property("application", app).build();
+        let title = (&view_model).title.clone();
+        *window.imp().view_model.borrow_mut() = view_model;
+        window.imp().label1.set_label(&title);
+        window
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {

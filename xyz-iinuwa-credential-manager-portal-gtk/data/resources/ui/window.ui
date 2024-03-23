@@ -30,8 +30,8 @@
       </object>
     </child>
     <child>
-      <object class="GtkLabel" id="label">
-        <property name="label" translatable="yes">Hello world!</property>
+      <object class="GtkLabel" id="label1">
+        <property name="label" translatable="yes"></property>
         <style>
           <class name="title-header"/>
         </style>
