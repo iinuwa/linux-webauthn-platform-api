@@ -17,7 +17,7 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     println!("Starting...");
-    task::block_on(run());
+    task::block_on(run()).unwrap();
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {

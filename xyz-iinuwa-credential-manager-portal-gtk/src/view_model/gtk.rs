@@ -67,8 +67,11 @@ impl ViewModel {
     }
 
     pub async fn send_thingy(&self) {
-        let tx = self.imp().tx.borrow();
-        let tx = tx.as_ref().expect("channel to exist");
+        let tx: Sender<ViewEvent>;
+        {
+            let tx_tmp = self.imp().tx.borrow();
+            tx = tx_tmp.as_ref().expect("channel to exist").clone();
+        }
         tx.send(ViewEvent::ButtonClicked).await.unwrap();
     }
 }

@@ -3,17 +3,13 @@ use std::cell::RefCell;
 use glib::Properties;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{gio, glib};
+use gtk::{gio, glib::{self, clone}};
 
 use crate::application::ExampleApplication;
 use crate::config::{APP_ID, PROFILE};
 use crate::view_model::gtk::ViewModel;
 
 mod imp {
-    use gtk::{glib::clone, template_callbacks};
-
-    use crate::view_model;
-
     use super::*;
 
     #[derive(Debug, Properties, gtk::CompositeTemplate)]

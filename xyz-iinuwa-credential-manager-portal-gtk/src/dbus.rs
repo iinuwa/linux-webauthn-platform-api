@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 
-use async_std::channel::{Receiver, Sender};
+use async_std::channel::Sender;
 // use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 // use base64::Engine;
 use gettextrs::{gettext, LocaleCategory};
@@ -28,38 +28,34 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
     thread::Builder::new()
         .name("gui".into())
         .spawn(move || {
-            loop {
-                if let Ok(()) = thread_signal.recv() {
-                    // Prepare i18n
-                    gettextrs::setlocale(LocaleCategory::LcAll, "");
-                    gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR)
-                        .expect("Unable to bind the text domain");
-                    gettextrs::textdomain(GETTEXT_PACKAGE)
-                        .expect("Unable to switch to the text domain");
-                    glib::set_application_name(&gettext("Credential Manager"));
+            while let Ok(()) = thread_signal.recv() {
+                // Prepare i18n
+                gettextrs::setlocale(LocaleCategory::LcAll, "");
+                gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR)
+                    .expect("Unable to bind the text domain");
+                gettextrs::textdomain(GETTEXT_PACKAGE)
+                    .expect("Unable to switch to the text domain");
+                glib::set_application_name(&gettext("Credential Manager"));
 
-                    let rx_event2 = rx_event.clone();
-                    let event_loop = glib::spawn_future_local(async move {
-                        let rx_event = rx_event2;
-                        while let Ok(view_event) = rx_event.recv().await {
-                            match view_event {
-                                ViewEvent::ButtonClicked => { println!("Got it!") },
-                                // _ => {},
-                            }
+                let rx_event2 = rx_event.clone();
+                let event_loop = glib::spawn_future_local(async move {
+                    let rx_event = rx_event2;
+                    while let Ok(view_event) = rx_event.recv().await {
+                        match view_event {
+                            ViewEvent::ButtonClicked => { println!("Got it!") },
+                            // _ => {},
                         }
-                    });
-                    let res =
-                        gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
-                    gio::resources_register(&res);
-                    let view_model = ViewModel::new("Testing", tx_event.clone(), rx_update.clone());
-                    let app = ExampleApplication::new(view_model);
-                    app.run();
-                    event_loop.abort();
-                    let mut running = lock2.lock().unwrap();
-                    *running = false;
-                } else {
-                    break;
-                }
+                    }
+                });
+                let res =
+                    gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
+                gio::resources_register(&res);
+                let view_model = ViewModel::new("Testing", tx_event.clone(), rx_update.clone());
+                let app = ExampleApplication::new(view_model);
+                app.run();
+                event_loop.abort();
+                let mut running = lock2.lock().unwrap();
+                *running = false;
             }
         })
         .unwrap();
@@ -98,7 +94,7 @@ impl CredentialManager {
     }
 
     async fn set_title(&self, title: String) {
-        self.event_transmitter.send(ViewUpdate::SetTitle(title)).await;
+        self.event_transmitter.send(ViewUpdate::SetTitle(title)).await.unwrap();
     }
     /*
     async fn create_credential(
