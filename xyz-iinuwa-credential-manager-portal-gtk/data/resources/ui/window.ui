@@ -30,17 +30,27 @@
       </object>
     </child>
     <child>
-      <object class="GtkLabel">
-        <binding name="label">
-          <lookup name="title">
-            <lookup name="view-model">
-              ExampleApplicationWindow
-            </lookup>
-          </lookup>
-        </binding>
-        <style>
-          <class name="title-header"/>
-        </style>
+      <object class="GtkBox">
+        <child>
+          <object class="GtkLabel">
+            <binding name="label">
+              <lookup name="title">
+                <lookup name="view-model">
+                  ExampleApplicationWindow
+                </lookup>
+              </lookup>
+            </binding>
+            <style>
+              <class name="title-header"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton">
+            <signal name="clicked" handler="handle_button_clicked" swapped="true"/>
+            <property name="label">Click me!</property>
+          </object>
+        </child>
       </object>
     </child>
   </template>

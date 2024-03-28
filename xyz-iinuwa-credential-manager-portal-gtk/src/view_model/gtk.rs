@@ -65,4 +65,10 @@ impl ViewModel {
             }
         }));
     }
+
+    pub async fn send_thingy(&self) {
+        let tx = self.imp().tx.borrow();
+        let tx = tx.as_ref().expect("channel to exist");
+        tx.send(ViewEvent::ButtonClicked).await.unwrap();
+    }
 }

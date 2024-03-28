@@ -10,6 +10,10 @@ use crate::config::{APP_ID, PROFILE};
 use crate::view_model::gtk::ViewModel;
 
 mod imp {
+    use gtk::{glib::clone, template_callbacks};
+
+    use crate::view_model;
+
     use super::*;
 
     #[derive(Debug, Properties, gtk::CompositeTemplate)]
@@ -21,6 +25,19 @@ mod imp {
         pub settings: gio::Settings,
         #[property(get, set)]
         pub view_model: RefCell<Option<ViewModel>>,
+    }
+
+    #[gtk::template_callbacks]
+    impl ExampleApplicationWindow {
+        #[template_callback]
+        fn handle_button_clicked(&self, _: &gtk::Button) {
+            println!("clicked");
+            let view_model = &self.view_model.borrow();
+            let view_model = view_model.as_ref().unwrap();
+            glib::spawn_future_local(clone!(@weak view_model => async move {
+                view_model.send_thingy().await;
+            }));
+        }
     }
 
     impl Default for ExampleApplicationWindow {
@@ -41,6 +58,7 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
+            klass.bind_template_callbacks();
         }
 
         // You must call `Widget`'s `init_template()` within `instance_init()`.

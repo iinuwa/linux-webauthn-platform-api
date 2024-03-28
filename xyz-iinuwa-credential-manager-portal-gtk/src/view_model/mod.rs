@@ -76,6 +76,7 @@ impl ViewModel<'_> {
 }
 
 pub enum ViewEvent {
+    ButtonClicked,
 }
 
 pub enum ViewUpdate {

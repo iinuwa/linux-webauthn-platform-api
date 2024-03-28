@@ -38,12 +38,23 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
                         .expect("Unable to switch to the text domain");
                     glib::set_application_name(&gettext("Credential Manager"));
 
+                    let rx_event2 = rx_event.clone();
+                    let event_loop = glib::spawn_future_local(async move {
+                        let rx_event = rx_event2;
+                        while let Ok(view_event) = rx_event.recv().await {
+                            match view_event {
+                                ViewEvent::ButtonClicked => { println!("Got it!") },
+                                // _ => {},
+                            }
+                        }
+                    });
                     let res =
                         gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
                     gio::resources_register(&res);
                     let view_model = ViewModel::new("Testing", tx_event.clone(), rx_update.clone());
                     let app = ExampleApplication::new(view_model);
                     app.run();
+                    event_loop.abort();
                     let mut running = lock2.lock().unwrap();
                     *running = false;
                 } else {
@@ -59,7 +70,6 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
             CredentialManager {
                 app_signaller: tx,
                 app_lock: lock,
-                event_listener: rx_event,
                 event_transmitter: tx_update,
             },
         )?
@@ -69,8 +79,6 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
 struct CredentialManager {
     app_signaller: mpsc::Sender<()>,
     app_lock: Arc<Mutex<bool>>,
-    /// Events received
-    event_listener: Receiver<ViewEvent>,
     event_transmitter: Sender<ViewUpdate>,
 }
 
