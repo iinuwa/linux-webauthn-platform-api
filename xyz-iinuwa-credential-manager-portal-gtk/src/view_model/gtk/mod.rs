@@ -1,3 +1,5 @@
+mod device;
+
 use async_std::channel::{Receiver, Sender};
 use gtk::glib;
 use gtk::glib::clone;
@@ -17,6 +19,11 @@ mod imp {
     pub struct ViewModel {
         #[property(get, set)]
         pub title: RefCell<String>,
+
+        #[property(get, set)]
+        pub devices: RefCell<gtk::ListBox>,
+
+        pub(super) vm: RefCell<crate::view_model::ViewModel>,
         pub(super) rx: RefCell<Option<Receiver<ViewUpdate>>>,
         pub(super) tx: RefCell<Option<Sender<ViewEvent>>>,
         // hybrid_qr_state: HybridState,
@@ -40,9 +47,17 @@ glib::wrapper! {
 }
 
 impl ViewModel {
-    pub fn new(title: &str, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
+    pub fn new(vm: crate::view_model::ViewModel, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
         let view_model: Self = glib::Object::builder().property("title", title).build();
         view_model.setup_channel(tx, rx);
+
+        let devices = gtk::ListBox::new();
+        for device in vm.devices {
+
+            devices.append(&device);
+        }
+        view_model.set_devices(devices);
+        view_model.devices()
         view_model
     }
 

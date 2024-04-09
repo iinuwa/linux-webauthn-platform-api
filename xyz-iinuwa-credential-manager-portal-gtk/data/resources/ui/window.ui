@@ -31,6 +31,27 @@
     </child>
     <child>
       <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkStack" id="stack">
+            <child>
+              <object class="GtkStackPage">
+                <property name="name">choose_device</property>
+                <property name="title">Choose device</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label">It was dark</property>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </child>
         <child>
           <object class="GtkLabel">
             <binding name="label">

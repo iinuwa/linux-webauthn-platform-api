@@ -21,6 +21,9 @@ mod imp {
         pub settings: gio::Settings,
         #[property(get, set)]
         pub view_model: RefCell<Option<ViewModel>>,
+
+        #[template_child]
+        pub stack: TemplateChild<gtk::Stack>,
     }
 
     #[gtk::template_callbacks]
@@ -42,6 +45,7 @@ mod imp {
                 headerbar: TemplateChild::default(),
                 settings: gio::Settings::new(APP_ID),
                 view_model: RefCell::default(),
+                stack: TemplateChild::default(),
             }
         }
     }

@@ -2,7 +2,8 @@ pub mod gtk;
 
 use std::time::Duration;
 
-struct ViewModel<'a> {
+#[derive(Debug, Default)]
+struct ViewModel {
     title: String,
     operation: Operation,
 
@@ -13,7 +14,7 @@ struct ViewModel<'a> {
     providers: Vec<Provider>,
 
     internal_uv_methods: Vec<UserVerificationMethod>,
-    internal_selected_uv_method: &'a UserVerificationMethod,
+    internal_selected_uv_method: UserVerificationMethod,
     internal_device_credentials: Vec<Credential>,
     internal_device_pin_state: InternalPinState,
     internal_fingerprint_sensor_state: FingerprintSensorState,
@@ -27,7 +28,7 @@ struct ViewModel<'a> {
     hybrid_linked_state: HybridState,
 }
 
-impl ViewModel<'_> {
+impl ViewModel {
     fn start_authentication(&self) {} // open page
     fn cancel_authentication(&self) {}
 
