@@ -2,14 +2,14 @@ pub mod gtk;
 
 use std::time::Duration;
 
-#[derive(Debug, Default)]
-struct ViewModel {
-    title: String,
+#[derive(Debug)]
+pub(crate) struct ViewModel {
+    // title: String,
     operation: Operation,
 
     // This includes devices like platform authenticator, USB, hybrid
     devices: Vec<Device>,
-    selected_device: Device,
+    selected_device: Option<Device>,
 
     providers: Vec<Provider>,
 
@@ -23,12 +23,29 @@ struct ViewModel {
     usb_device_pin_state: UsbPinState,
 
     hybrid_qr_state: HybridState,
-    hybrid_qr_code_data: Vec<u8>,
+    hybrid_qr_code_data: Option<Vec<u8>>,
 
     hybrid_linked_state: HybridState,
 }
 
 impl ViewModel {
+    pub(crate) fn new(operation: Operation) -> Self {
+        Self {
+            operation,
+            devices: Vec::new(),
+            selected_device: None,
+            providers: Vec::new(),
+            internal_uv_methods: Vec::new(),
+            internal_selected_uv_method: UserVerificationMethod::default(),
+            internal_device_credentials: Vec::new(),
+            internal_device_pin_state: InternalPinState::default(),
+            internal_fingerprint_sensor_state: FingerprintSensorState::default(),
+            usb_device_state: UsbState::default(),
+            usb_device_pin_state: UsbPinState::default(),
+            hybrid_qr_state: HybridState::default(),
+            hybrid_qr_code_data: None,
+            hybrid_linked_state: HybridState::default() }
+    }
     fn start_authentication(&self) {} // open page
     fn cancel_authentication(&self) {}
 
@@ -84,26 +101,35 @@ pub enum ViewUpdate {
     SetTitle(String),
 }
 
+#[derive(Debug, Default)]
 pub struct Credential {
     id: String,
     name: String,
     username: Option<String>,
 }
-pub enum FingerprintSensorState {}
 
+#[derive(Debug, Default)]
+pub enum FingerprintSensorState {
+    #[default]
+    Idle,
+}
+
+#[derive(Debug)]
 pub enum CredentialType {
     Passkey,
     Password,
 }
 
+#[derive(Debug)]
 pub struct Device {
     id: String,
     transport: Transport,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum HybridState {
     /// Default state, not listening for hybrid transport.
+    #[default]
     Idle,
 
     /// Awaiting BLE advert from phone.
@@ -123,7 +149,9 @@ pub enum HybridState {
     UserCancelled,
 }
 
+#[derive(Debug, Default)]
 pub enum InternalPinState {
+    #[default]
     Waiting,
 
     PinIncorrect { attempts_left: u32 },
@@ -133,13 +161,16 @@ pub enum InternalPinState {
     PinCorrect,
 }
 
+#[derive(Debug)]
 pub enum Operation {
     Create { cred_type: CredentialType },
     Get { cred_types: Vec<CredentialType> },
 }
 
+#[derive(Debug, Default)]
 pub struct Provider;
 
+#[derive(Debug)]
 pub enum Transport {
     Ble,
     HybridLinked,
@@ -149,8 +180,10 @@ pub enum Transport {
     Usb,
 }
 
+#[derive(Debug, Default)]
 pub enum UsbState {
     /// Not currently listening for USB devices.
+    #[default]
     NotListening,
 
     /// Awaiting FIDO USB device to be plugged in.
@@ -168,7 +201,10 @@ pub enum UsbState {
     // This isn't actually sent from the server.
     UserCancelled,
 }
+
+#[derive(Debug, Default)]
 pub enum UsbPinState {
+    #[default]
     Waiting,
 
     PinIncorrect { attempts_left: u32 },
@@ -178,4 +214,5 @@ pub enum UsbPinState {
     PinCorrect,
 }
 
+#[derive(Debug, Default)]
 pub struct UserVerificationMethod;

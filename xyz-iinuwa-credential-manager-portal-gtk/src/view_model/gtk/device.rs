@@ -1,40 +1,72 @@
-use std::cell::Cell;
+use std::cell::RefCell;
 
 use gtk::glib;
-use glib::{Object, Properties};
+use glib::Object;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
-use crate::view_model;
+use crate::view_model::Transport;
 
 mod imp {
     use super::*;
 
-    #[derive(Properties, Default)]
-    #[properties(wrapper_type = super::Device)]
-    pub struct Device {
+    #[derive(glib::Properties, Default)]
+    #[properties(wrapper_type = super::DeviceObject)]
+    pub struct DeviceObject {
         #[property(get, set)]
-        device: RefCell<view_model::Device>,
+        pub id: RefCell<String>,
+
+        #[property(get, set)]
+        pub transport: RefCell<String>,
+
+        #[property(get, set)]
+        pub name: RefCell<String>,
     }
 
     // The central trait for subclassing a GObject
     #[glib::object_subclass]
-    impl ObjectSubclass for Device {
+    impl ObjectSubclass for DeviceObject {
         const NAME: &'static str = "CredentialManagerDevice";
-        type Type = super::Device;
+        type Type = super::DeviceObject;
     }
 
     // Trait shared by all GObjects
     #[glib::derived_properties]
-    impl ObjectImpl for Device {}
+    impl ObjectImpl for DeviceObject {}
 }
 
 glib::wrapper! {
-    pub struct Device(ObjectSubclass<imp::Device>);
+    pub struct DeviceObject(ObjectSubclass<imp::DeviceObject>);
 }
 
-impl Device {
-    pub fn new(device: view_model::Device) -> Self {
-        Object::builder().property("device", device).build()
+impl DeviceObject {
+    pub fn new(id: &str, transport: &Transport, name: &str) -> Self {//, label: &str, icon_name: &str) -> Self {
+        let transport = match transport {
+            Transport::Ble => "BLE",
+            Transport::HybridLinked => "Hybrid",
+            Transport::HybridQr => "Hybrid",
+            Transport::Internal => "Internal",
+            Transport::Nfc => "NFC",
+            Transport::Usb => "USB",
+        };
+        Object::builder()
+            .property("id", id)
+            .property("transport", transport)
+            .property("name", name)
+            .build()
     }
 }
+
+/*
+impl From<view_model::Device> for DeviceObject {
+    fn from(value: view_model::Device) -> Self {
+        Self::new(&value.id, &value.transport)
+    }
+}
+
+impl From<&view_model::Device> for DeviceObject {
+    fn from(value: &view_model::Device) -> Self {
+        Self::new(&value.id, &value.transport)
+    }
+}
+*/
