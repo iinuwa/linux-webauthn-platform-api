@@ -1,3 +1,4 @@
+use async_std::channel::{Receiver, Sender};
 use gettextrs::gettext;
 use tracing::{debug, info};
 
@@ -7,17 +8,20 @@ use gtk::{gdk, gio, glib};
 
 use crate::config::{APP_ID, PKGDATADIR, PROFILE, VERSION};
 use crate::view_model::gtk::ViewModel;
+use crate::view_model::{ViewEvent, ViewUpdate};
 use crate::window::ExampleApplicationWindow;
 
 mod imp {
     use super::*;
     use glib::WeakRef;
-    use std::cell::OnceCell;
+    use std::cell::{OnceCell, RefCell};
 
     #[derive(Debug, Default)]
     pub struct ExampleApplication {
         pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
-        pub(super) view_model: OnceCell<ViewModel>,
+        pub(super) vm: RefCell<Option<crate::view_model::ViewModel>>,
+        pub(super) tx: OnceCell<Sender<ViewEvent>>,
+        pub(super) rx: OnceCell<Receiver<ViewUpdate>>,
     }
 
     #[glib::object_subclass]
@@ -41,7 +45,10 @@ mod imp {
                 return;
             }
 
-            let view_model = self.view_model.get().expect("view model to exist");
+            let vm = self.vm.take().expect("receiver to be initiated");
+            let tx = self.tx.get().expect("receiver to be initiated").clone();
+            let rx = self.rx.get().expect("receiver to be initiated").clone();
+            let view_model = ViewModel::new(vm, tx, rx); // self.view_model.get().expect("view model to exist");
             let window = ExampleApplicationWindow::new(&app, view_model.clone());
             self.window
                 .set(window.downgrade())
@@ -143,12 +150,14 @@ impl ExampleApplication {
         ApplicationExtManual::run(self)
     }
 
-    pub fn new(view_model: ViewModel) -> Self {
+    pub(crate) fn new(vm: crate::view_model::ViewModel, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
         let app: Self = glib::Object::builder()
             .property("application-id", APP_ID)
             .property("resource-base-path", "/xyz/iinuwa/CredentialManager/")
             .build();
-        app.imp().view_model.get_or_init(|| view_model);
+        app.imp().vm.replace(Some(vm));
+        app.imp().tx.get_or_init(|| tx);
+        app.imp().rx.get_or_init(|| rx);
         app
     }
 }

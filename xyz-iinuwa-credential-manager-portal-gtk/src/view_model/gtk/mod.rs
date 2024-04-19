@@ -59,7 +59,6 @@ impl ViewModel {
             Operation::Get { .. } => "Use a credential",
         };
         let view_model: Self = glib::Object::builder().property("title", title).build();
-        // view_model.imp().vm.replace(Some(vm));
         view_model.setup_channel(tx, rx);
 
         let devices: &Vec<Device> = vm.devices.as_ref();
