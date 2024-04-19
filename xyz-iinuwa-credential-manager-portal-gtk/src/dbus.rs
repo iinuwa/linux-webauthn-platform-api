@@ -14,7 +14,9 @@ use zbus::{interface, Connection, ConnectionBuilder, Result};
 use crate::application::ExampleApplication;
 use crate::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
 use crate::view_model::CredentialType;
+use crate::view_model::Device;
 use crate::view_model::Operation;
+use crate::view_model::Transport;
 use crate::view_model::{self, ViewEvent, ViewUpdate};
 // use crate::store;
 // use crate::webauthn;
@@ -50,7 +52,8 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
                 let res =
                     gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
                 gio::resources_register(&res);
-                let vm = view_model::ViewModel::new(Operation::Create { cred_type: CredentialType::Passkey });
+                let devices = vec![Device { id: String::from("1"), transport: Transport::Usb }];
+                let vm = view_model::ViewModel::new(Operation::Create { cred_type: CredentialType::Passkey }, devices);
                 let app = ExampleApplication::new(vm, tx_event.clone(), rx_update.clone());
                 app.run();
                 // app.init();

@@ -29,10 +29,10 @@ pub(crate) struct ViewModel {
 }
 
 impl ViewModel {
-    pub(crate) fn new(operation: Operation) -> Self {
+    pub(crate) fn new(operation: Operation, devices: Vec<Device>) -> Self {
         Self {
             operation,
-            devices: Vec::new(),
+            devices: devices,
             selected_device: None,
             providers: Vec::new(),
             internal_uv_methods: Vec::new(),
@@ -122,8 +122,8 @@ pub enum CredentialType {
 
 #[derive(Debug)]
 pub struct Device {
-    id: String,
-    transport: Transport,
+    pub id: String,
+    pub transport: Transport,
 }
 
 #[derive(Clone, Debug, Default)]

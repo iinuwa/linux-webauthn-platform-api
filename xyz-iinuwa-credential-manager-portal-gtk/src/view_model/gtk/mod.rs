@@ -91,8 +91,8 @@ impl ViewModel {
             };
 
             gtk::Button::builder()
-                .icon_name(icon_name)
                 .label(device.name())
+                .icon_name(icon_name)
                 .name(device.id())
                 .build()
                 .into()

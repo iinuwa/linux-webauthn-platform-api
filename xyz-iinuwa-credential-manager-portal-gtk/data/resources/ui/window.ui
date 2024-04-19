@@ -43,7 +43,18 @@
                     <property name="orientation">vertical</property>
                     <child>
                       <object class="GtkLabel">
-                        <property name="label">It was dark</property>
+                        <property name="label">Devices</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <binding name="child">
+                          <lookup name="devices">
+                            <lookup name="view-model">
+                              ExampleApplicationWindow
+                            </lookup>
+                          </lookup>
+                        </binding>
                       </object>
                     </child>
                   </object>
