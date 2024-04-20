@@ -33,6 +33,20 @@
       <object class="GtkBox">
         <property name="orientation">vertical</property>
         <child>
+          <object class="GtkLabel">
+            <binding name="label">
+              <lookup name="title">
+                <lookup name="view-model">
+                  ExampleApplicationWindow
+                </lookup>
+              </lookup>
+            </binding>
+            <style>
+              <class name="title-header"/>
+            </style>
+          </object>
+        </child>
+        <child>
           <object class="GtkStack" id="stack">
             <child>
               <object class="GtkStackPage">
@@ -61,20 +75,6 @@
                 </property>
               </object>
             </child>
-          </object>
-        </child>
-        <child>
-          <object class="GtkLabel">
-            <binding name="label">
-              <lookup name="title">
-                <lookup name="view-model">
-                  ExampleApplicationWindow
-                </lookup>
-              </lookup>
-            </binding>
-            <style>
-              <class name="title-header"/>
-            </style>
           </object>
         </child>
         <child>
