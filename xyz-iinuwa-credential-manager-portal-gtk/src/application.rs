@@ -14,12 +14,12 @@ use crate::window::ExampleApplicationWindow;
 mod imp {
     use super::*;
     use glib::WeakRef;
-    use std::cell::{OnceCell, RefCell};
+    use std::cell::OnceCell;
 
     #[derive(Debug, Default)]
     pub struct ExampleApplication {
         pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
-        pub(super) vm: RefCell<Option<crate::view_model::ViewModel>>,
+
         pub(super) tx: OnceCell<Sender<ViewEvent>>,
         pub(super) rx: OnceCell<Receiver<ViewUpdate>>,
     }
@@ -45,10 +45,9 @@ mod imp {
                 return;
             }
 
-            let vm = self.vm.take().expect("receiver to be initiated");
             let tx = self.tx.get().expect("receiver to be initiated").clone();
             let rx = self.rx.get().expect("receiver to be initiated").clone();
-            let view_model = ViewModel::new(vm, tx, rx); // self.view_model.get().expect("view model to exist");
+            let view_model = ViewModel::new(tx, rx); // self.view_model.get().expect("view model to exist");
             let window = ExampleApplicationWindow::new(&app, view_model.clone());
             self.window
                 .set(window.downgrade())
@@ -150,12 +149,11 @@ impl ExampleApplication {
         ApplicationExtManual::run(self)
     }
 
-    pub(crate) fn new(vm: crate::view_model::ViewModel, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
+    pub(crate) fn new(tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
         let app: Self = glib::Object::builder()
             .property("application-id", APP_ID)
             .property("resource-base-path", "/xyz/iinuwa/CredentialManager/")
             .build();
-        app.imp().vm.replace(Some(vm));
         app.imp().tx.get_or_init(|| tx);
         app.imp().rx.get_or_init(|| rx);
         app

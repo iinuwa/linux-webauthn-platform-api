@@ -1,6 +1,7 @@
 mod application;
 #[rustfmt::skip]
 mod config;
+mod credential_service;
 mod dbus;
 mod view_model;
 mod window;
@@ -8,9 +9,6 @@ mod window;
 use std::error::Error;
 
 use async_std::task;
-
-
-
 
 fn main() {
     // Initialize logger

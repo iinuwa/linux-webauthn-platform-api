@@ -2,9 +2,16 @@ pub mod gtk;
 
 use std::time::Duration;
 
+use async_std::channel::{Receiver, Sender};
+
+use crate::credential_service::CredentialService;
+
 #[derive(Debug)]
 pub(crate) struct ViewModel {
-    // title: String,
+    credential_service: CredentialService,
+    tx_update: Sender<ViewUpdate>,
+    rx_event: Receiver<ViewEvent>,
+    title: String,
     operation: Operation,
 
     // This includes devices like platform authenticator, USB, hybrid
@@ -29,10 +36,14 @@ pub(crate) struct ViewModel {
 }
 
 impl ViewModel {
-    pub(crate) fn new(operation: Operation, devices: Vec<Device>) -> Self {
+    pub(crate) fn new(operation: Operation, credential_service: CredentialService, rx_event: Receiver<ViewEvent>, tx_update: Sender<ViewUpdate>) -> Self {
         Self {
+            credential_service,
+            rx_event,
+            tx_update,
             operation,
-            devices: devices,
+            title: String::default(),
+            devices: Vec::new(),
             selected_device: None,
             providers: Vec::new(),
             internal_uv_methods: Vec::new(),
@@ -88,17 +99,51 @@ impl ViewModel {
         todo!("not implemented");
     }
 
-    fn select_device(&self) {
-        todo!("not implemented");
+    async fn update_title(&mut self) {
+        self.title = match self.operation {
+            Operation::Create{ .. } => "Create new credential",
+            Operation::Get { .. } => "Use a credential",
+        }.to_string();
+        self.tx_update.send(ViewUpdate::SetTitle(self.title.to_string())).await.unwrap();
+    }
+
+    async fn update_devices(&mut self) {
+        let devices = self.credential_service.get_available_public_key_devices().await.unwrap();
+        self.devices = devices;
+        self.tx_update.send(ViewUpdate::SetDevices(self.devices.to_owned())).await.unwrap();
+    }
+
+    pub(crate) fn select_device(&self, id: &str) {
+        let device = self.devices.iter().find(|d| &d.id == id).unwrap();
+        println!("{:?}", device);
+    }
+
+    pub(crate) async fn start_event_loop(&mut self) {
+        while let Ok(view_event) = self.rx_event.recv().await {
+            match view_event {
+                ViewEvent::Initiated => {
+                    self.update_title().await;
+                    self.update_devices().await;
+                },
+                ViewEvent::ButtonClicked => { println!("Got it!") },
+                ViewEvent::DeviceSelected(id) => {
+                    self.select_device(&id);
+                    println!("Selected device {id}");
+                },
+            }
+        }
     }
 }
 
 pub enum ViewEvent {
+    Initiated,
     ButtonClicked,
+    DeviceSelected(String),
 }
 
 pub enum ViewUpdate {
     SetTitle(String),
+    SetDevices(Vec<Device>),
 }
 
 #[derive(Debug, Default)]
@@ -120,7 +165,7 @@ pub enum CredentialType {
     Password,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Device {
     pub id: String,
     pub transport: Transport,
@@ -170,7 +215,7 @@ pub enum Operation {
 #[derive(Debug, Default)]
 pub struct Provider;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Transport {
     Ble,
     HybridLinked,
