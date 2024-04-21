@@ -25,19 +25,16 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
     let lock = Arc::new(Mutex::new(false));
     let lock2 = lock.clone();
     let (tx, thread_signal) = mpsc::channel::<()>();
-    let (tx_update, rx_update) = async_std::channel::unbounded::<ViewUpdate>();
-    let tx_update2 = tx_update.clone();
-    let (tx_event, rx_event) = async_std::channel::unbounded::<ViewEvent>();
     thread::Builder::new()
         .name("gui".into())
         .spawn(move || {
             while let Ok(()) = thread_signal.recv() {
+                let (tx_update, rx_update) = async_std::channel::unbounded::<ViewUpdate>();
+                let (tx_event, rx_event) = async_std::channel::unbounded::<ViewEvent>();
                 let credential_service = CredentialService::new();
-                let rx_event2 = rx_event.clone();
-                let tx_update2 = tx_update2.clone();
                 let event_loop = async_std::task::spawn(async move {
                     let operation = Operation::Create { cred_type: CredentialType::Passkey };
-                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event2.clone(), tx_update2.clone());
+                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event.clone(), tx_update.clone());
                     vm.start_event_loop().await;
                 });
                 start_gtk_app(tx_event.clone(), rx_update.clone());
@@ -55,7 +52,6 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
             CredentialManager {
                 app_signaller: tx,
                 app_lock: lock,
-                event_transmitter: tx_update.clone(),
             },
         )?
         .build()
@@ -84,7 +80,6 @@ fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
 struct CredentialManager {
     app_signaller: mpsc::Sender<()>,
     app_lock: Arc<Mutex<bool>>,
-    event_transmitter: Sender<ViewUpdate>,
 }
 
 #[interface(name = "xyz.iinuwa.credentials.CredentialManagerUi1")]
@@ -102,9 +97,6 @@ impl CredentialManager {
         }
     }
 
-    async fn set_title(&self, title: String) {
-        self.event_transmitter.send(ViewUpdate::SetTitle(title)).await.unwrap();
-    }
     /*
     async fn create_credential(
         &self,
