@@ -144,6 +144,7 @@ pub enum ViewEvent {
 pub enum ViewUpdate {
     SetTitle(String),
     SetDevices(Vec<Device>),
+    SelectDevice(Device),
 }
 
 #[derive(Debug, Default)]
@@ -223,6 +224,54 @@ pub enum Transport {
     Internal,
     Nfc,
     Usb,
+}
+
+pub enum Error {
+    ConversionError,
+}
+
+impl TryInto<Transport> for String {
+    type Error = String;
+
+    fn try_into(self) -> Result<Transport, String> {
+        let value: &str = self.as_ref();
+        value.try_into()
+    }
+}
+
+impl TryInto<Transport> for &str {
+    type Error = String;
+
+    fn try_into(self) -> Result<Transport, String> {
+        match self {
+            "BLE" => Ok(Transport::Ble),
+             "HybridLinked" => Ok(Transport::HybridLinked),
+            "HybridQr" => Ok(Transport::HybridQr),
+            "Internal" => Ok(Transport::Internal),
+            "NFC" => Ok(Transport::Nfc),
+            "USB" => Ok(Transport::Usb),
+            _ => Err(format!("Unrecognized transport: {}", self.to_owned())),
+        }
+    }
+}
+
+impl Into<String> for Transport {
+    fn into(self) -> String {
+        self.as_str().to_string()
+    }
+}
+
+impl Transport {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Transport::Ble => "BLE",
+            Transport::HybridLinked => "HybridLinked",
+            Transport::HybridQr => "HybridQr",
+            Transport::Internal => "Internal",
+            Transport::Nfc => "NFC",
+            Transport::Usb => "USB",
+        }
+    }
 }
 
 #[derive(Debug, Default)]

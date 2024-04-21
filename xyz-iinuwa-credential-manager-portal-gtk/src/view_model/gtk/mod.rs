@@ -1,4 +1,4 @@
-mod device;
+pub mod device;
 
 use async_std::channel::{Receiver, Sender};
 use gtk::gio;
@@ -11,7 +11,6 @@ use tracing::debug;
 use self::device::DeviceObject;
 
 use super::Device;
-use super::Operation;
 use super::Transport;
 use super::{ViewEvent, ViewUpdate};
 
@@ -28,6 +27,9 @@ mod imp {
 
         #[property(get, set)]
         pub devices: RefCell<gtk::ListBox>,
+
+        #[property(get, set)]
+        pub selected_device: RefCell<Option<DeviceObject>>,
 
         // pub(super) vm: RefCell<Option<crate::view_model::ViewModel>>,
         pub(super) rx: RefCell<Option<Receiver<ViewUpdate>>>,
@@ -71,7 +73,8 @@ impl ViewModel {
                     Ok(update) => {
                         match update {
                             ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
-                            ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) }
+                            ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
+                            ViewUpdate::SelectDevice(device) => { view_model.set_selected_device(&device.into()) },
                         }
                     },
                     Err(e) => {
@@ -85,16 +88,8 @@ impl ViewModel {
 
     fn update_devices(&self, devices: &[Device]) {
         let vec: Vec<DeviceObject> = devices.iter().map(|d| {
-            let name = match d.transport {
-                Transport::Ble => "A Bluetooth device",
-                Transport::Internal => "This device",
-                Transport::HybridQr => "A mobile device",
-                Transport::HybridLinked => "TODO: Linked Device",
-                Transport::Nfc => "An NFC device",
-                Transport::Usb => "A security key",
-                // Transport::PasskeyProvider => ("symbolic-link-symbolic", "ACME Password Manager"),
-            };
-            DeviceObject::new(&d.id, &d.transport, name)
+            let device_object: DeviceObject = d.into();
+            device_object
         }).collect();
         let model = gio::ListStore::new::<DeviceObject>();
         model.extend_from_slice(&vec);
@@ -102,13 +97,14 @@ impl ViewModel {
         let device_list = gtk::ListBox::new();
         device_list.bind_model(Some(&model), move |item| -> gtk::Widget {
             let device = item.downcast_ref::<DeviceObject>().unwrap();
-            let icon_name = match device.transport().as_ref() {
-                "BLE" => "bluetooth-symbolic",
-                "Internal" => "computer-symbolic",
-                "HybridQr" => "phone-symbolic",
-                "HybridLinked" => "phone-symbolic",
-                "NFC" => "nfc-symbolic",
-                "USB" => "media-removable-symbolic",
+            let transport: Transport = device.transport().try_into().unwrap();
+            let icon_name = match transport {
+                Transport::Ble => "bluetooth-symbolic",
+                Transport::Internal => "computer-symbolic",
+                Transport::HybridQr => "phone-symbolic",
+                Transport::HybridLinked => "phone-symbolic",
+                Transport::Nfc => "nfc-symbolic",
+                Transport::Usb => "media-removable-symbolic",
                 // Transport::PasskeyProvider => ("symbolic-link-symbolic", "ACME Password Manager"),
                 _ => "question-symbolic",
             };
@@ -136,6 +132,10 @@ impl ViewModel {
             button.into()
         });
         self.set_devices(device_list);
+    }
+
+    fn select_device(device: &Device) {
+
     }
 
     pub async fn send_thingy(&self) {

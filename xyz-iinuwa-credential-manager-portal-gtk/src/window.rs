@@ -7,7 +7,9 @@ use gtk::{gio, glib::{self, clone}};
 
 use crate::application::ExampleApplication;
 use crate::config::{APP_ID, PROFILE};
-use crate::view_model::gtk::ViewModel;
+use crate::view_model::gtk::{device::DeviceObject, ViewModel};
+use crate::view_model::Transport;
+
 
 mod imp {
     use super::*;
@@ -108,10 +110,25 @@ glib::wrapper! {
 
 impl ExampleApplicationWindow {
     pub fn new(app: &ExampleApplication, view_model: ViewModel) -> Self {
-        glib::Object::builder()
+        let window: ExampleApplicationWindow = glib::Object::builder()
             .property("application", app)
             .property("view-model", view_model)
-            .build()
+            .build();
+        window.setup_callbacks();
+        window
+    }
+
+    fn setup_callbacks(&self) {
+        let view_model = &self.view_model();
+        let view_model = view_model.as_ref().expect("view model to exist");
+        let stack: &gtk::Stack = &self.imp().stack.get();
+        view_model.connect_selected_device_notify(clone!(@weak stack => move |f| {
+            let d = f.selected_device();
+            let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
+            if let Ok(Transport::Usb) = d.transport().try_into() {
+                stack.set_visible_child_name("usb");
+            };
+        }));
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {

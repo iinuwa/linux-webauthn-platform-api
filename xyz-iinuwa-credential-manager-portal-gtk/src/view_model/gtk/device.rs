@@ -41,14 +41,7 @@ glib::wrapper! {
 
 impl DeviceObject {
     pub fn new(id: &str, transport: &Transport, name: &str) -> Self {//, label: &str, icon_name: &str) -> Self {
-        let transport = match transport {
-            Transport::Ble => "BLE",
-            Transport::HybridLinked => "Hybrid",
-            Transport::HybridQr => "Hybrid",
-            Transport::Internal => "Internal",
-            Transport::Nfc => "NFC",
-            Transport::Usb => "USB",
-        };
+        let transport = transport.as_str();
         Object::builder()
             .property("id", id)
             .property("transport", transport)
@@ -57,16 +50,27 @@ impl DeviceObject {
     }
 }
 
-/*
-impl From<view_model::Device> for DeviceObject {
-    fn from(value: view_model::Device) -> Self {
-        Self::new(&value.id, &value.transport)
+fn transport_name(transport: &Transport) -> &'static str {
+    match transport {
+        Transport::Ble => "A Bluetooth device",
+        Transport::Internal => "This device",
+        Transport::HybridQr => "A mobile device",
+        Transport::HybridLinked => "TODO: Linked Device",
+        Transport::Nfc => "An NFC device",
+        Transport::Usb => "A security key",
+        // Transport::PasskeyProvider => ("symbolic-link-symbolic", "ACME Password Manager"),
+    }
+}
+impl From<crate::view_model::Device> for DeviceObject {
+    fn from(value: crate::view_model::Device) -> Self {
+        let name = transport_name(&value.transport);
+        Self::new(&value.id, &value.transport, name)
     }
 }
 
-impl From<&view_model::Device> for DeviceObject {
-    fn from(value: &view_model::Device) -> Self {
-        Self::new(&value.id, &value.transport)
+impl From<&crate::view_model::Device> for DeviceObject {
+    fn from(value: &crate::view_model::Device) -> Self {
+        let name = transport_name(&value.transport);
+        Self::new(&value.id, &value.transport, name)
     }
 }
-*/
