@@ -55,7 +55,8 @@ impl ViewModel {
             usb_device_pin_state: UsbPinState::default(),
             hybrid_qr_state: HybridState::default(),
             hybrid_qr_code_data: None,
-            hybrid_linked_state: HybridState::default() }
+            hybrid_linked_state: HybridState::default()
+        }
     }
     fn start_authentication(&self) {} // open page
     fn cancel_authentication(&self) {}
@@ -113,9 +114,10 @@ impl ViewModel {
         self.tx_update.send(ViewUpdate::SetDevices(self.devices.to_owned())).await.unwrap();
     }
 
-    pub(crate) fn select_device(&self, id: &str) {
+    pub(crate) async fn select_device(&self, id: &str) {
         let device = self.devices.iter().find(|d| &d.id == id).unwrap();
         println!("{:?}", device);
+        self.tx_update.send(ViewUpdate::SelectDevice(device.clone())).await.unwrap();
     }
 
     pub(crate) async fn start_event_loop(&mut self) {
@@ -127,7 +129,7 @@ impl ViewModel {
                 },
                 ViewEvent::ButtonClicked => { println!("Got it!") },
                 ViewEvent::DeviceSelected(id) => {
-                    self.select_device(&id);
+                    self.select_device(&id).await;
                     println!("Selected device {id}");
                 },
             }

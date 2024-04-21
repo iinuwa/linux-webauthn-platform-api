@@ -30,7 +30,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkBox">
+    <object class="GtkBox">
         <property name="orientation">vertical</property>
         <child>
           <object class="GtkLabel">
@@ -48,8 +48,8 @@
         </child>
         <child>
           <object class="GtkStack" id="stack">
-            <child>
 
+            <child>
               <object class="GtkStackPage">
                 <property name="name">choose_device</property>
                 <property name="title">Choose device</property>
@@ -75,20 +75,20 @@
                   </object>
                 </property>
               </object>
+            </child>
 
+            <child>
               <object class="GtkStackPage">
                 <property name="name">usb</property>
                 <property name="title">Plug in security key</property>
                 <property name="child">
-                  <object class="GtkCenterBox">
+                  <object class="GtkBox">
                     <property name="orientation">vertical</property>
-                    <!--
                     <child>
                       <object class="GtkImage">
                         <property name="icon-name">media-removable-symbolic</property>
                       </object>
                     </child>
-                    -->
                     <child>
                       <object class="GtkLabel">
                         <property name="label">Insert your security key</property>
@@ -97,8 +97,8 @@
                   </object>
                 </property>
               </object>
-
             </child>
+
           </object>
         </child>
         <child>

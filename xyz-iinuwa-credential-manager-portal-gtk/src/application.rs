@@ -47,7 +47,7 @@ mod imp {
 
             let tx = self.tx.get().expect("receiver to be initiated").clone();
             let rx = self.rx.get().expect("receiver to be initiated").clone();
-            let view_model = ViewModel::new(tx, rx); // self.view_model.get().expect("view model to exist");
+            let view_model = ViewModel::new(tx, rx);
             let window = ExampleApplicationWindow::new(&app, view_model.clone());
             self.window
                 .set(window.downgrade())

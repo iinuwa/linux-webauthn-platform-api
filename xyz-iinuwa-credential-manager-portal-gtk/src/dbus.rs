@@ -36,7 +36,8 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
                 let rx_event2 = rx_event.clone();
                 let tx_update2 = tx_update2.clone();
                 let event_loop = async_std::task::spawn(async move {
-                    let mut vm = view_model::ViewModel::new(Operation::Create { cred_type: CredentialType::Passkey }, credential_service, rx_event2.clone(), tx_update2.clone());
+                    let operation = Operation::Create { cred_type: CredentialType::Passkey };
+                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event2.clone(), tx_update2.clone());
                     vm.start_event_loop().await;
                 });
                 start_gtk_app(tx_event.clone(), rx_update.clone());
