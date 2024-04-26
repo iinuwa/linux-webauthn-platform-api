@@ -14,14 +14,14 @@ use crate::window::ExampleApplicationWindow;
 mod imp {
     use super::*;
     use glib::WeakRef;
-    use std::cell::OnceCell;
+    use std::cell::{OnceCell, RefCell};
 
     #[derive(Debug, Default)]
     pub struct ExampleApplication {
         pub window: OnceCell<WeakRef<ExampleApplicationWindow>>,
 
-        pub(super) tx: OnceCell<Sender<ViewEvent>>,
-        pub(super) rx: OnceCell<Receiver<ViewUpdate>>,
+        pub(super) tx: RefCell<Option<Sender<ViewEvent>>>,
+        pub(super) rx: RefCell<Option<Receiver<ViewUpdate>>>,
     }
 
     #[glib::object_subclass]
@@ -45,10 +45,10 @@ mod imp {
                 return;
             }
 
-            let tx = self.tx.get().expect("receiver to be initiated").clone();
-            let rx = self.rx.get().expect("receiver to be initiated").clone();
+            let tx = self.tx.take().expect("receiver to be initiated");
+            let rx = self.rx.take().expect("receiver to be initiated");
             let view_model = ViewModel::new(tx, rx);
-            let window = ExampleApplicationWindow::new(&app, view_model.clone());
+            let window = ExampleApplicationWindow::new(&app, view_model);
             self.window
                 .set(window.downgrade())
                 .expect("Window already set.");
@@ -67,7 +67,6 @@ mod imp {
             app.setup_css();
             app.setup_gactions();
             app.setup_accels();
-            app.setup_view_model();
         }
     }
 
@@ -122,8 +121,6 @@ impl ExampleApplication {
         }
     }
 
-    fn setup_view_model(&self) {}
-
     fn show_about_dialog(&self) {
         let dialog = gtk::AboutDialog::builder()
             .logo_icon_name(APP_ID)
@@ -154,19 +151,8 @@ impl ExampleApplication {
             .property("application-id", APP_ID)
             .property("resource-base-path", "/xyz/iinuwa/CredentialManager/")
             .build();
-        app.imp().tx.get_or_init(|| tx);
-        app.imp().rx.get_or_init(|| rx);
+        app.imp().tx.replace(Some(tx));
+        app.imp().rx.replace(Some(rx));
         app
     }
 }
-
-/*
-impl Default for ExampleApplication {
-    fn default() -> Self {
-        glib::Object::builder()
-            .property("application-id", APP_ID)
-            .property("resource-base-path", "/xyz/iinuwa/CredentialManager/")
-            .build()
-    }
-}
-*/

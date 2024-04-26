@@ -57,18 +57,24 @@ glib::wrapper! {
 impl ViewModel {
     pub(crate) fn new(tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) -> Self {
         let view_model: Self = glib::Object::builder().build();
-        view_model.setup_channel(tx.clone(), rx);
+        view_model.setup_channel(tx, rx);
 
-        tx.send_blocking(ViewEvent::Initiated).unwrap();
+        {
+            let tx = view_model.imp().tx.borrow();
+            let tx = tx.as_ref().expect("tx to exist");
+            tx.send_blocking(ViewEvent::Initiated).unwrap();
+        }
 
         view_model
     }
 
     fn setup_channel(&self, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) {
-        self.imp().tx.replace(Some(tx.clone()));
-        self.imp().rx.replace(Some(rx.clone()));
+        self.imp().tx.replace(Some(tx));
+        self.imp().rx.replace(Some(rx));
         glib::spawn_future_local(clone!(@weak self as view_model => async move {
             loop {
+                let rx = view_model.imp().rx.borrow();
+                let rx = rx.as_ref().expect("rx to exist");
                 match rx.recv().await {
                     Ok(update) => {
                         match update {

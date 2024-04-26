@@ -34,10 +34,10 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
                 let credential_service = CredentialService::new();
                 let event_loop = async_std::task::spawn(async move {
                     let operation = Operation::Create { cred_type: CredentialType::Passkey };
-                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event.clone(), tx_update.clone());
+                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event, tx_update);
                     vm.start_event_loop().await;
                 });
-                start_gtk_app(tx_event.clone(), rx_update.clone());
+                start_gtk_app(tx_event, rx_update);
 
                 async_std::task::block_on(event_loop.cancel());
                 let mut running = lock2.lock().unwrap();
@@ -73,7 +73,7 @@ fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
         gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
     gio::resources_register(&res);
 
-    let app = ExampleApplication::new(tx_event.clone(), rx_update.clone());
+    let app = ExampleApplication::new(tx_event, rx_update);
     app.run();
 }
 

@@ -124,7 +124,6 @@ impl ViewModel {
         while let Ok(view_event) = self.rx_event.recv().await {
             match view_event {
                 ViewEvent::Initiated => {
-                    // TODO: For some reason, this doesn't work the second time you open the window.
                     self.update_title().await;
                     self.update_devices().await;
                 },
