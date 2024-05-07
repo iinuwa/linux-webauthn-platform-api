@@ -80,7 +80,7 @@ impl ViewModel {
                         match update {
                             ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
                             ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
-                            ViewUpdate::SelectDevice(device) => { view_model.set_selected_device(&device.into()) },
+                            ViewUpdate::SelectDevice(device) => { view_model.select_device(&device) },
                         }
                     },
                     Err(e) => {
@@ -140,8 +140,14 @@ impl ViewModel {
         self.set_devices(device_list);
     }
 
-    fn select_device(device: &Device) {
+    fn select_device(&self, device: &Device) {
+        match device.transport {
+            Transport::Usb => {
 
+            },
+            _ => { todo!(); }
+        }
+        self.set_selected_device(&device.into());
     }
 
     pub async fn send_thingy(&self) {

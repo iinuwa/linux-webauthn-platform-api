@@ -114,9 +114,29 @@ impl ViewModel {
         self.tx_update.send(ViewUpdate::SetDevices(self.devices.to_owned())).await.unwrap();
     }
 
-    pub(crate) async fn select_device(&self, id: &str) {
+    pub(crate) async fn select_device(&mut self, id: &str) {
         let device = self.devices.iter().find(|d| &d.id == id).unwrap();
         println!("{:?}", device);
+
+        // Handle previous device
+        if let Some(prev_device) = self.selected_device.replace(device.clone()) {
+            if *device == prev_device {
+                return;
+            }
+            match prev_device.transport {
+                Transport::Usb => { self.credential_service.cancel_device_discovery_usb().await.unwrap() },
+                _ => { todo!() }
+            };
+        }
+
+        // start discovery for newly selected device
+        match device.transport {
+            Transport::Usb => {
+                self.credential_service.start_device_discovery_usb().await.unwrap();
+             },
+            _ => { todo!() }
+        }
+
         self.tx_update.send(ViewUpdate::SelectDevice(device.clone())).await.unwrap();
     }
 
@@ -168,7 +188,7 @@ pub enum CredentialType {
     Password,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Device {
     pub id: String,
     pub transport: Transport,
@@ -218,7 +238,7 @@ pub enum Operation {
 #[derive(Debug, Default)]
 pub struct Provider;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Transport {
     Ble,
     HybridLinked,

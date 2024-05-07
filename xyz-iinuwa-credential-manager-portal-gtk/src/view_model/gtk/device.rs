@@ -74,3 +74,12 @@ impl From<&crate::view_model::Device> for DeviceObject {
         Self::new(&value.id, &value.transport, name)
     }
 }
+
+impl TryFrom<DeviceObject> for crate::view_model::Device {
+    type Error = String;
+
+    fn try_from(value: DeviceObject) -> Result<Self, Self::Error> {
+        let transport: Transport = value.transport().try_into()?;
+        Ok(Self { id: value.id(), transport })
+    }
+}

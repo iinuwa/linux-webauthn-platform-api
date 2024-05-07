@@ -72,8 +72,11 @@ impl CredentialService {
         Ok(self.usb_state)
     }
 
-    pub(crate) fn cancel_device_discovery_usb(_request: &UsbPollResponse) {
-        println!("frontend: Cancel USB request")
+    pub(crate) async fn cancel_device_discovery_usb(&mut self) -> Result<(), String> {
+        self.usb_state = UsbState::Idle;
+        self.usb_poll_count = -1;
+        println!("frontend: Cancel USB request");
+        Ok(())
     }
 
     pub(crate) fn validate_usb_device_pin(&mut self, pin: &str) -> Result<bool, ()> {
