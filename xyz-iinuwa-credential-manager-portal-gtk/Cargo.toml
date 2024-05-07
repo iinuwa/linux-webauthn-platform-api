@@ -8,7 +8,7 @@ edition = "2021"
 lto = true
 
 [dependencies]
-async-std = "1.12.0"
+async-std = { version = "1.12.0", features = ["unstable"] }
 gettext-rs = { version = "0.7", features = ["gettext-system"] }
 gtk = { version = "0.8", package = "gtk4", features = ["v4_6"] }
 tracing = "0.1.40"

@@ -2,6 +2,7 @@ pub mod gtk;
 
 use std::time::Duration;
 
+use async_std::prelude::*;
 use async_std::channel::{Receiver, Sender};
 
 use crate::credential_service::CredentialService;
@@ -11,6 +12,8 @@ pub(crate) struct ViewModel {
     credential_service: CredentialService,
     tx_update: Sender<ViewUpdate>,
     rx_event: Receiver<ViewEvent>,
+    bg_update: Sender<BackgroundEvent>,
+    bg_event: Receiver<BackgroundEvent>,
     title: String,
     operation: Operation,
 
@@ -37,10 +40,13 @@ pub(crate) struct ViewModel {
 
 impl ViewModel {
     pub(crate) fn new(operation: Operation, credential_service: CredentialService, rx_event: Receiver<ViewEvent>, tx_update: Sender<ViewUpdate>) -> Self {
+        let (bg_update, bg_event) = async_std::channel::unbounded::<BackgroundEvent>();
         Self {
             credential_service,
             rx_event,
             tx_update,
+            bg_update,
+            bg_event,
             operation,
             title: String::default(),
             devices: Vec::new(),
@@ -132,7 +138,16 @@ impl ViewModel {
         // start discovery for newly selected device
         match device.transport {
             Transport::Usb => {
-                self.credential_service.start_device_discovery_usb().await.unwrap();
+                let cred_service = &self.credential_service;
+                let mut handle = cred_service.start_device_discovery_usb().await.unwrap();
+                async_std::task::spawn(async {
+                    // TODO: repeat poll in loop
+                    async_std::task::sleep(Duration::from_millis(100)).await;
+                    // TODO: add cancellation
+                    while let Ok(usb_state) = cred_service.poll_device_discovery_usb(&mut handle).await {
+
+                    }
+                })
              },
             _ => { todo!() }
         }
@@ -141,18 +156,24 @@ impl ViewModel {
     }
 
     pub(crate) async fn start_event_loop(&mut self) {
-        while let Ok(view_event) = self.rx_event.recv().await {
-            match view_event {
-                ViewEvent::Initiated => {
+        let view_events = self.rx_event.clone().map(Event::View);
+        let bg_events = self.bg_event.clone().map(Event::Background);
+        let mut all_events = view_events.merge(bg_events);
+        while let Some(event) = all_events.next().await {
+            match event {
+                Event::View(ViewEvent::Initiated) => {
                     self.update_title().await;
                     self.update_devices().await;
                 },
-                ViewEvent::ButtonClicked => { println!("Got it!") },
-                ViewEvent::DeviceSelected(id) => {
+                Event::View(ViewEvent::ButtonClicked) => { println!("Got it!") },
+                Event::View(ViewEvent::DeviceSelected(id)) => {
                     self.select_device(&id).await;
                     println!("Selected device {id}");
                 },
-            }
+                Event::Background(bg_event) => {
+
+                }
+            };
         }
     }
 }
@@ -167,6 +188,15 @@ pub enum ViewUpdate {
     SetTitle(String),
     SetDevices(Vec<Device>),
     SelectDevice(Device),
+}
+
+pub enum BackgroundEvent {
+    UsbPressed,
+}
+
+pub enum Event {
+    Background(BackgroundEvent),
+    View(ViewEvent)
 }
 
 #[derive(Debug, Default)]
