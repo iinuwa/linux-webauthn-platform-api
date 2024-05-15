@@ -1,15 +1,16 @@
 pub mod gtk;
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_std::prelude::*;
-use async_std::channel::{Receiver, Sender};
+use async_std::{channel::{Receiver, Sender}, sync::Mutex};
 
 use crate::credential_service::CredentialService;
 
 #[derive(Debug)]
 pub(crate) struct ViewModel {
-    credential_service: CredentialService,
+    credential_service: Arc<Mutex<CredentialService>>,
     tx_update: Sender<ViewUpdate>,
     rx_event: Receiver<ViewEvent>,
     bg_update: Sender<BackgroundEvent>,
@@ -42,7 +43,7 @@ impl ViewModel {
     pub(crate) fn new(operation: Operation, credential_service: CredentialService, rx_event: Receiver<ViewEvent>, tx_update: Sender<ViewUpdate>) -> Self {
         let (bg_update, bg_event) = async_std::channel::unbounded::<BackgroundEvent>();
         Self {
-            credential_service,
+            credential_service: Arc::new(Mutex::new(credential_service)),
             rx_event,
             tx_update,
             bg_update,
@@ -115,7 +116,7 @@ impl ViewModel {
     }
 
     async fn update_devices(&mut self) {
-        let devices = self.credential_service.get_available_public_key_devices().await.unwrap();
+        let devices = self.credential_service.lock().await.get_available_public_key_devices().await.unwrap();
         self.devices = devices;
         self.tx_update.send(ViewUpdate::SetDevices(self.devices.to_owned())).await.unwrap();
     }
@@ -130,7 +131,7 @@ impl ViewModel {
                 return;
             }
             match prev_device.transport {
-                Transport::Usb => { self.credential_service.cancel_device_discovery_usb().await.unwrap() },
+                Transport::Usb => { self.credential_service.lock().await.cancel_device_discovery_usb().await.unwrap() },
                 _ => { todo!() }
             };
         }
@@ -138,16 +139,23 @@ impl ViewModel {
         // start discovery for newly selected device
         match device.transport {
             Transport::Usb => {
-                let cred_service = &self.credential_service;
-                let mut handle = cred_service.start_device_discovery_usb().await.unwrap();
-                async_std::task::spawn(async {
+                let cred_service = self.credential_service.clone();
+                let mut handle = self.credential_service.lock().await.start_device_discovery_usb().await.unwrap();
+                let tx = self.bg_update.clone();
+                async_std::task::spawn(async move {
                     // TODO: repeat poll in loop
                     async_std::task::sleep(Duration::from_millis(100)).await;
                     // TODO: add cancellation
-                    while let Ok(usb_state) = cred_service.poll_device_discovery_usb(&mut handle).await {
-
+                    let mut prev_state = UsbState::default();
+                    while let Ok(()) = cred_service.lock().await.poll_device_discovery_usb(&mut handle).await {
+                        let state = handle.state.into();
+                        if prev_state != state {
+                            println!("{:?}", state);
+                            tx.send(BackgroundEvent::UsbStateChanged(state.clone())).await.unwrap();
+                        }
+                        prev_state = state;
                     }
-                })
+                });
              },
             _ => { todo!() }
         }
@@ -170,8 +178,17 @@ impl ViewModel {
                     self.select_device(&id).await;
                     println!("Selected device {id}");
                 },
-                Event::Background(bg_event) => {
-
+                Event::Background(BackgroundEvent::UsbPressed) => {
+                    println!("UsbPressed");
+                }
+                Event::Background(BackgroundEvent::UsbStateChanged(state)) => {
+                    self.usb_device_state = state;
+                    match self.usb_device_state {
+                        UsbState::NeedsPin => {
+                            self.tx_update.send(ViewUpdate::UsbNeedsPin).await.unwrap();
+                        },
+                        _ => {},
+                    }
                 }
             };
         }
@@ -188,10 +205,12 @@ pub enum ViewUpdate {
     SetTitle(String),
     SetDevices(Vec<Device>),
     SelectDevice(Device),
+    UsbNeedsPin,
 }
 
 pub enum BackgroundEvent {
     UsbPressed,
+    UsbStateChanged(UsbState),
 }
 
 pub enum Event {
@@ -326,7 +345,7 @@ impl Transport {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum UsbState {
     /// Not currently listening for USB devices.
     #[default]
@@ -346,6 +365,19 @@ pub enum UsbState {
 
     // This isn't actually sent from the server.
     UserCancelled,
+}
+
+impl Into<UsbState> for crate::credential_service::UsbState {
+    fn into(self) -> UsbState {
+        match self {
+            crate::credential_service::UsbState::Idle => UsbState::NotListening,
+            crate::credential_service::UsbState::Waiting => UsbState::Waiting,
+            crate::credential_service::UsbState::Connected => UsbState::Connected,
+            crate::credential_service::UsbState::NeedsPin => UsbState::NeedsPin,
+            crate::credential_service::UsbState::Completed => UsbState::Completed,
+            crate::credential_service::UsbState::UserCancelled => UsbState::UserCancelled,
+        }
+    }
 }
 
 #[derive(Debug, Default)]

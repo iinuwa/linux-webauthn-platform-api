@@ -31,6 +31,9 @@ mod imp {
         #[property(get, set)]
         pub selected_device: RefCell<Option<DeviceObject>>,
 
+        #[property(get, set)]
+        pub usb_pin_entry_visible: RefCell<bool>,
+
         // pub(super) vm: RefCell<Option<crate::view_model::ViewModel>>,
         pub(super) rx: RefCell<Option<Receiver<ViewUpdate>>>,
         pub(super) tx: RefCell<Option<Sender<ViewEvent>>>,
@@ -81,6 +84,7 @@ impl ViewModel {
                             ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
                             ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
                             ViewUpdate::SelectDevice(device) => { view_model.select_device(&device) },
+                            ViewUpdate::UsbNeedsPin => { view_model.set_usb_pin_entry_visible(true) }
                         }
                     },
                     Err(e) => {

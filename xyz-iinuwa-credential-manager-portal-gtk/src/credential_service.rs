@@ -37,7 +37,7 @@ impl CredentialService {
         })
     }
 
-    pub(crate) async fn poll_device_discovery_usb(&self, handle: &mut UsbPollResponse) -> Result<UsbState, String> {
+    pub(crate) async fn poll_device_discovery_usb(&self, handle: &mut UsbPollResponse) -> Result<(), String> {
         thread::sleep(Duration::from_millis(25));
 
         match handle.state {
@@ -45,7 +45,7 @@ impl CredentialService {
             UsbState::Waiting  => { }
             UsbState::Idle => return Err(String::from("USB polling not started.")),
             // UsbPinState::Completed => return Err(String::from("USB polling not started.")),
-            _ => return Ok(handle.state),
+            _ => {}
         }
 
         let prev_state = handle.state;
@@ -58,8 +58,8 @@ impl CredentialService {
             msg.replace("frontend: Discovered FIDO USB key");
             handle.state = UsbState::Connected;
             handle.needs_pin = true; // This may be false for U2F devices or devices that don't support user verification.
-        } else if self.usb_poll_count < 25 && self.usb_state == UsbState::Connected {
-            if self.usb_needs_pin {
+        } else if handle.poll_count < 25 && handle.state == UsbState::Connected {
+            if handle.needs_pin {
                 msg.replace("frontend: FIDO USB token requested PIN unlock");
                 handle.state = UsbState::NeedsPin;
             } else {
@@ -72,7 +72,7 @@ impl CredentialService {
         if prev_state != handle.state && msg.is_some() {
             println!("{}", msg.unwrap());
         }
-        Ok(handle.state)
+        Ok(())
     }
 
     pub(crate) async fn cancel_device_discovery_usb(&mut self) -> Result<(), String> {

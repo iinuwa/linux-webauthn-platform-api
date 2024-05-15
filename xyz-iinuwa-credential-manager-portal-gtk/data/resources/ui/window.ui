@@ -94,6 +94,18 @@
                         <property name="label">Insert your security key</property>
                       </object>
                     </child>
+                    <child>
+                      <object class="GtkPasswordEntry">
+                        <binding name="visible">
+                          <lookup name="usb_pin_entry_visible">
+                            <lookup name="view-model">
+                              ExampleApplicationWindow
+                            </lookup>
+                          </lookup>
+                        </binding>
+                        <property name="placeholder-text">Enter your device PIN</property>
+                      </object>
+                    </child>
                   </object>
                 </property>
               </object>
