@@ -95,7 +95,8 @@
                       </object>
                     </child>
                     <child>
-                      <object class="GtkPasswordEntry">
+                      <object class="GtkPasswordEntry" id="usb_pin_entry">
+                        <signal name="activate" handler="handle_usb_pin_entered" swapped="true"/>
                         <binding name="visible">
                           <lookup name="usb_pin_entry_visible">
                             <lookup name="view-model">

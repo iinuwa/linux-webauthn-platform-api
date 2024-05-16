@@ -26,6 +26,9 @@ mod imp {
 
         #[template_child]
         pub stack: TemplateChild<gtk::Stack>,
+
+        #[template_child]
+        pub usb_pin_entry: TemplateChild<gtk::PasswordEntry>,
     }
 
     #[gtk::template_callbacks]
@@ -39,6 +42,16 @@ mod imp {
                 view_model.send_thingy().await;
             }));
         }
+
+        #[template_callback]
+        fn handle_usb_pin_entered(&self, entry: &gtk::PasswordEntry) {
+            let view_model = &self.view_model.borrow();
+            let view_model = view_model.as_ref().unwrap();
+            let pin = entry.text().to_string();
+            glib::spawn_future_local(clone!(@weak view_model => async move {
+                view_model.send_usb_device_pin(pin).await;
+            }));
+        }
     }
 
     impl Default for ExampleApplicationWindow {
@@ -48,6 +61,7 @@ mod imp {
                 settings: gio::Settings::new(APP_ID),
                 view_model: RefCell::default(),
                 stack: TemplateChild::default(),
+                usb_pin_entry: TemplateChild::default()
             }
         }
     }

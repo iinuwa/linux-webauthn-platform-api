@@ -158,6 +158,10 @@ impl ViewModel {
         self.send_event(ViewEvent::ButtonClicked).await;
     }
 
+    pub async fn send_usb_device_pin(&self, pin: String) {
+        self.send_event(ViewEvent::UsbPinEntered(pin)).await;
+    }
+
     fn get_sender(&self) -> Sender<ViewEvent> {
         let tx: Sender<ViewEvent>;
         {

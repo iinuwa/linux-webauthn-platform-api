@@ -140,15 +140,15 @@ impl ViewModel {
         match device.transport {
             Transport::Usb => {
                 let cred_service = self.credential_service.clone();
-                let mut handle = self.credential_service.lock().await.start_device_discovery_usb().await.unwrap();
+                _ = self.credential_service.lock().await.start_device_discovery_usb().await.unwrap();
                 let tx = self.bg_update.clone();
                 async_std::task::spawn(async move {
                     // TODO: repeat poll in loop
-                    async_std::task::sleep(Duration::from_millis(100)).await;
+                    async_std::task::sleep(Duration::from_millis(150)).await;
                     // TODO: add cancellation
                     let mut prev_state = UsbState::default();
-                    while let Ok(()) = cred_service.lock().await.poll_device_discovery_usb(&mut handle).await {
-                        let state = handle.state.into();
+                    while let Ok(usb_state) = cred_service.lock().await.poll_device_discovery_usb().await {
+                        let state = usb_state.into();
                         if prev_state != state {
                             println!("{:?}", state);
                             tx.send(BackgroundEvent::UsbStateChanged(state.clone())).await.unwrap();
@@ -178,6 +178,10 @@ impl ViewModel {
                     self.select_device(&id).await;
                     println!("Selected device {id}");
                 },
+                Event::View(ViewEvent::UsbPinEntered(pin)) => {
+                    _ = self.credential_service.lock().await.validate_usb_device_pin(&pin).await.unwrap();
+                },
+
                 Event::Background(BackgroundEvent::UsbPressed) => {
                     println!("UsbPressed");
                 }
@@ -187,6 +191,9 @@ impl ViewModel {
                         UsbState::NeedsPin => {
                             self.tx_update.send(ViewUpdate::UsbNeedsPin).await.unwrap();
                         },
+                        UsbState::Completed => {
+                            println!("completed USB flow");
+                        }
                         _ => {},
                     }
                 }
@@ -199,6 +206,7 @@ pub enum ViewEvent {
     Initiated,
     ButtonClicked,
     DeviceSelected(String),
+    UsbPinEntered(String),
 }
 
 pub enum ViewUpdate {
