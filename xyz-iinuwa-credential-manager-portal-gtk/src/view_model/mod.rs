@@ -192,7 +192,7 @@ impl ViewModel {
                             self.tx_update.send(ViewUpdate::UsbNeedsPin).await.unwrap();
                         },
                         UsbState::Completed => {
-                            println!("completed USB flow");
+                            self.tx_update.send(ViewUpdate::Completed).await.unwrap();
                         }
                         _ => {},
                     }
@@ -214,6 +214,7 @@ pub enum ViewUpdate {
     SetDevices(Vec<Device>),
     SelectDevice(Device),
     UsbNeedsPin,
+    Completed
 }
 
 pub enum BackgroundEvent {
