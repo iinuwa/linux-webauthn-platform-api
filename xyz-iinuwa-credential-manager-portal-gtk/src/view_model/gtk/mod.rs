@@ -9,8 +9,9 @@ use gtk::subclass::prelude::*;
 use tracing::debug;
 
 use self::device::DeviceObject;
+use self::credential::CredentialObject;
 
-use super::Device;
+use super::{Device, Credential};
 use super::Transport;
 use super::{ViewEvent, ViewUpdate};
 
@@ -27,6 +28,9 @@ mod imp {
 
         #[property(get, set)]
         pub devices: RefCell<gtk::ListBox>,
+
+        #[property(get, set)]
+        pub credentials: RefCell<gtk::ListBox>,
 
         #[property(get, set)]
         pub selected_device: RefCell<Option<DeviceObject>>,
@@ -86,6 +90,7 @@ impl ViewModel {
                         match update {
                             ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
                             ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
+                            ViewUpdate::SetCredentials(credentials) => { view_model.update_credentials(&credentials) },
                             ViewUpdate::SelectDevice(device) => { view_model.select_device(&device) },
                             ViewUpdate::UsbNeedsPin => { view_model.set_usb_pin_entry_visible(true) },
                             ViewUpdate::Completed => { view_model.set_completed(true) }
@@ -146,6 +151,45 @@ impl ViewModel {
             button.into()
         });
         self.set_devices(device_list);
+    }
+
+    fn update_credentials(&self, devices: &[Credential]) {
+        let vec: Vec<CredentialObject> = credentials.iter().map(|d| {
+            let credential_object: CredentialObject = d.into();
+            credential_object
+        }).collect();
+        let model = gio::ListStore::new::<CredentialObject>();
+        model.extend_from_slice(&vec);
+        let tx = self.get_sender();
+        let credential_list = gtk::ListBox::new();
+        credential_list.bind_model(Some(&model), move |item| -> gtk::Widget {
+            let credential = item.downcast_ref::<CredentialObject>().unwrap();
+            let transport: Transport = credential.transport().try_into().unwrap();
+            // TODO: need a "credential type" to determine the icon, e.g. passkey vs. password?
+            let icon_name = "key-symbolic";
+            let b = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .build();
+            let icon = gtk::Image::builder().icon_name(icon_name).build();
+            let label = gtk::Label::builder().label(credential.name()).build();
+            b.append(&icon);
+            b.append(&label);
+
+            let button = gtk::Button::builder()
+                .name(credential.id())
+                .child(&b)
+                .build();
+            let tx = tx.clone();
+            button.connect_clicked(move |button| {
+                let id = button.widget_name().to_string();
+                let tx = tx.clone();
+                glib::spawn_future_local(async move {
+                tx.send(ViewEvent::CredentialSelected(id)).await.unwrap();
+                });
+            });
+            button.into()
+        });
+        self.set_credentials(credential_list);
     }
 
     fn select_device(&self, device: &Device) {

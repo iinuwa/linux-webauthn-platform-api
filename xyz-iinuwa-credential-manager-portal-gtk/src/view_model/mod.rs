@@ -121,6 +121,19 @@ impl ViewModel {
         self.tx_update.send(ViewUpdate::SetDevices(self.devices.to_owned())).await.unwrap();
     }
 
+    async fn update_internal_credentials(&mut self) {
+        let credential_service = self.credential_service.lock().await;
+        let credentials: Vec<Credential> = credential_service.get_internal_device_credentials().await.unwrap().iter().map(|c| {
+            Credential {
+                id: c.id.to_owned(),
+                name: c.display_name.to_owned(),
+                username: Some(c.username.to_owned()),
+            }
+        }).collect();
+        self.internal_device_credentials.extend(credentials);
+        self.tx_update.send(ViewUpdate::SetCredentials(self.internal_device_credentials.to_owned())).await.unwrap();
+    }
+
     pub(crate) async fn select_device(&mut self, id: &str) {
         let device = self.devices.iter().find(|d| &d.id == id).unwrap();
         println!("{:?}", device);
@@ -172,6 +185,7 @@ impl ViewModel {
                 Event::View(ViewEvent::Initiated) => {
                     self.update_title().await;
                     self.update_devices().await;
+                    self.update_internal_credentials().await;
                 },
                 Event::View(ViewEvent::ButtonClicked) => { println!("Got it!") },
                 Event::View(ViewEvent::DeviceSelected(id)) => {
@@ -206,12 +220,14 @@ pub enum ViewEvent {
     Initiated,
     ButtonClicked,
     DeviceSelected(String),
+    CredentialSelected(String),
     UsbPinEntered(String),
 }
 
 pub enum ViewUpdate {
     SetTitle(String),
     SetDevices(Vec<Device>),
+    SetCredentials(Vec<Credential>),
     SelectDevice(Device),
     UsbNeedsPin,
     Completed

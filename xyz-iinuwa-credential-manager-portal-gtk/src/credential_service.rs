@@ -10,11 +10,17 @@ pub struct CredentialService {
     usb_poll_count: i32,
     usb_needs_pin: bool,
     usb_pin_entered: bool,
+
+    internal_device_credentials: Vec<CredentialMetadata>,
 }
 
 impl CredentialService {
     pub fn new() -> Self {
         let devices = vec![Device { id: String::from("0"), transport: Transport::Usb }];
+        let internal_device_credentials = vec![
+            CredentialMetadata { id: String::from("0"), origin: String::from("foo.example.com"), display_name: String::from("Foo"), username: String::from("joecool") },
+            CredentialMetadata { id: String::from("1"), origin: String::from("bar.example.org"), display_name: String::from("Bar"), username: String::from("cooliojoe") },
+        ];
         Self {
             devices,
 
@@ -22,6 +28,8 @@ impl CredentialService {
             usb_poll_count: -1,
             usb_needs_pin: false,
             usb_pin_entered: false,
+
+            internal_device_credentials,
         }
     }
 
@@ -99,6 +107,10 @@ impl CredentialService {
             Ok(false)
         }
     }
+
+    pub(crate) async fn get_internal_device_credentials(&self) -> Result<&Vec<CredentialMetadata>, ()> {
+        Ok(&self.internal_device_credentials)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -141,4 +153,20 @@ pub enum PinResponse {
     /// PIN locked out, contains time (in seconds since Unix epoch) when
     /// the user can retry.
     Locked(Duration),
+}
+
+#[derive(Debug)]
+pub(crate) struct CredentialMetadata {
+    /// ID of credential, to be used in `SelectCredential()`.
+    pub(crate) id: String,
+
+    /// Origin of credential.
+    // TODO: Does this need to be multiple origins?
+    pub(crate) origin: String,
+
+    /// User-chosen name for the credential.
+    pub(crate) display_name: String,
+
+    /// Username of credential, if any.
+    pub(crate) username: String,
 }

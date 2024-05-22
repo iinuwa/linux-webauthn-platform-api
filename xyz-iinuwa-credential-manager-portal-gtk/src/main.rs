@@ -1,10 +1,12 @@
 mod application;
+mod cbor;
 #[rustfmt::skip]
 mod config;
 mod credential_service;
 mod dbus;
 #[allow(dead_code)]
 mod view_model;
+mod webauthn;
 mod window;
 
 use std::error::Error;
