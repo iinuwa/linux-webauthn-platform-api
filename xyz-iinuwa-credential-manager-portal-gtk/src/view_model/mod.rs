@@ -195,6 +195,9 @@ impl ViewModel {
                 Event::View(ViewEvent::UsbPinEntered(pin)) => {
                     _ = self.credential_service.lock().await.validate_usb_device_pin(&pin).await.unwrap();
                 },
+                Event::View(ViewEvent::CredentialSelected(_cred)) => {
+                    todo!();
+                },
 
                 Event::Background(BackgroundEvent::UsbPressed) => {
                     println!("UsbPressed");
@@ -243,7 +246,7 @@ pub enum Event {
     View(ViewEvent)
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Credential {
     id: String,
     name: String,

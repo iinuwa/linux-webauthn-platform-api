@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use crate::view_model::{Device, Transport};
+use crate::view_model::{Credential, Device, Transport};
 
 #[derive(Debug)]
 pub struct CredentialService {
@@ -16,7 +16,10 @@ pub struct CredentialService {
 
 impl CredentialService {
     pub fn new() -> Self {
-        let devices = vec![Device { id: String::from("0"), transport: Transport::Usb }];
+        let devices = vec![
+            Device { id: String::from("0"), transport: Transport::Usb },
+            Device { id: String::from("1"), transport: Transport::Internal },
+        ];
         let internal_device_credentials = vec![
             CredentialMetadata { id: String::from("0"), origin: String::from("foo.example.com"), display_name: String::from("Foo"), username: String::from("joecool") },
             CredentialMetadata { id: String::from("1"), origin: String::from("bar.example.org"), display_name: String::from("Bar"), username: String::from("cooliojoe") },

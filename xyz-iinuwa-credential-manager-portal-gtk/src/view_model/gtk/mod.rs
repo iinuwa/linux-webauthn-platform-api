@@ -1,3 +1,4 @@
+pub mod credential;
 pub mod device;
 
 use async_std::channel::{Receiver, Sender};
@@ -153,7 +154,7 @@ impl ViewModel {
         self.set_devices(device_list);
     }
 
-    fn update_credentials(&self, devices: &[Credential]) {
+    fn update_credentials(&self, credentials: &[Credential]) {
         let vec: Vec<CredentialObject> = credentials.iter().map(|d| {
             let credential_object: CredentialObject = d.into();
             credential_object
@@ -164,7 +165,6 @@ impl ViewModel {
         let credential_list = gtk::ListBox::new();
         credential_list.bind_model(Some(&model), move |item| -> gtk::Widget {
             let credential = item.downcast_ref::<CredentialObject>().unwrap();
-            let transport: Transport = credential.transport().try_into().unwrap();
             // TODO: need a "credential type" to determine the icon, e.g. passkey vs. password?
             let icon_name = "key-symbolic";
             let b = gtk::Box::builder()
