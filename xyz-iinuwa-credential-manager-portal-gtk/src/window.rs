@@ -3,13 +3,15 @@ use std::cell::RefCell;
 use glib::Properties;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::{gio, glib::{self, clone}};
+use gtk::{
+    gio,
+    glib::{self, clone},
+};
 
 use crate::application::ExampleApplication;
 use crate::config::{APP_ID, PROFILE};
 use crate::view_model::gtk::{device::DeviceObject, ViewModel};
 use crate::view_model::Transport;
-
 
 mod imp {
     use super::*;
@@ -52,6 +54,16 @@ mod imp {
                 view_model.send_usb_device_pin(pin).await;
             }));
         }
+
+        #[template_callback]
+        fn handle_internal_pin_entered(&self, entry: &gtk::PasswordEntry) {
+            let view_model = &self.view_model.borrow();
+            let view_model = view_model.as_ref().unwrap();
+            let pin = entry.text().to_string();
+            glib::spawn_future_local(clone!(@weak view_model => async move {
+                view_model.send_internal_device_pin(pin).await;
+            }));
+        }
     }
 
     impl Default for ExampleApplicationWindow {
@@ -61,7 +73,7 @@ mod imp {
                 settings: gio::Settings::new(APP_ID),
                 view_model: RefCell::default(),
                 stack: TemplateChild::default(),
-                usb_pin_entry: TemplateChild::default()
+                usb_pin_entry: TemplateChild::default(),
             }
         }
     }
@@ -139,8 +151,10 @@ impl ExampleApplicationWindow {
         view_model.connect_selected_device_notify(clone!(@weak stack => move |vm| {
             let d = vm.selected_device();
             let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
-            if let Ok(Transport::Usb) = d.transport().try_into() {
-                stack.set_visible_child_name("usb");
+            match d.transport().try_into() {
+                Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
+                Ok(Transport::Internal) => stack.set_visible_child_name("internal"),
+                _ => { },
             };
         }));
 

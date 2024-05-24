@@ -145,6 +145,8 @@ impl ViewModel {
             }
             match prev_device.transport {
                 Transport::Usb => { self.credential_service.lock().await.cancel_device_discovery_usb().await.unwrap() },
+                Transport::Internal => {
+                },
                 _ => { todo!() }
             };
         }
@@ -169,7 +171,9 @@ impl ViewModel {
                         prev_state = state;
                     }
                 });
-             },
+            },
+            Transport::Internal => {
+            }
             _ => { todo!() }
         }
 
@@ -194,6 +198,16 @@ impl ViewModel {
                 },
                 Event::View(ViewEvent::UsbPinEntered(pin)) => {
                     _ = self.credential_service.lock().await.validate_usb_device_pin(&pin).await.unwrap();
+                },
+                Event::View(ViewEvent::InternalPinEntered(pin)) => {
+                    let state = self.credential_service.lock().await.validate_internal_device_pin(&pin).await.unwrap();
+                    println!("{:?}", state);
+                    match state {
+                        InternalPinState::PinCorrect => {
+                            self.tx_update.send(ViewUpdate::Completed).await.unwrap();
+                        }
+                        _ => todo!(),
+                    }
                 },
                 Event::View(ViewEvent::CredentialSelected(_cred)) => {
                     todo!();
@@ -225,6 +239,7 @@ pub enum ViewEvent {
     DeviceSelected(String),
     CredentialSelected(String),
     UsbPinEntered(String),
+    InternalPinEntered(String),
 }
 
 pub enum ViewUpdate {

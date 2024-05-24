@@ -1,6 +1,7 @@
-use std::{thread, time::Duration};
 
-use crate::view_model::{Credential, Device, Transport};
+use std::{ops::Add, thread, time::{Duration, SystemTime, UNIX_EPOCH }};
+
+use crate::view_model::{Device, InternalPinState, Transport};
 
 #[derive(Debug)]
 pub struct CredentialService {
@@ -12,6 +13,9 @@ pub struct CredentialService {
     usb_pin_entered: bool,
 
     internal_device_credentials: Vec<CredentialMetadata>,
+    internal_device_state: InternalDeviceState,
+    internal_pin_attempts_left: u32,
+    internal_pin_unlock_time: Option<SystemTime>,
 }
 
 impl CredentialService {
@@ -33,6 +37,9 @@ impl CredentialService {
             usb_pin_entered: false,
 
             internal_device_credentials,
+            internal_device_state: InternalDeviceState::Idle,
+            internal_pin_attempts_left: 5,
+            internal_pin_unlock_time: None,
         }
     }
 
@@ -114,6 +121,34 @@ impl CredentialService {
     pub(crate) async fn get_internal_device_credentials(&self) -> Result<&Vec<CredentialMetadata>, ()> {
         Ok(&self.internal_device_credentials)
     }
+
+    pub(crate) async fn validate_internal_device_pin(&mut self, pin: &str) -> Result<InternalPinState, ()> {
+        // TODO: Should this have the selected credential ID included with it to make sure the
+        // frontend and backend are talking about the same credential?
+        let now = SystemTime::now();
+        if let Some(unlock_time) = self.internal_pin_unlock_time {
+            if unlock_time < now {
+                let t = unlock_time.duration_since(UNIX_EPOCH).unwrap();
+                return Ok(InternalPinState::LockedOut { unlock_time: t });
+            } else {
+                self.internal_pin_unlock_time = None;
+            }
+        }
+        if pin == "123456" {
+            self.internal_device_state = InternalDeviceState::Completed;
+            Ok(InternalPinState::PinCorrect)
+        } else {
+            self.internal_device_state = InternalDeviceState::NeedsPin;
+            self.internal_pin_attempts_left -= 1;
+            if self.internal_pin_attempts_left > 0 {
+                Ok(InternalPinState::PinIncorrect { attempts_left: self.internal_pin_attempts_left })
+            } else {
+                let t = now.add(Duration::from_secs(10));
+                self.internal_pin_unlock_time = Some(t);
+                Ok(InternalPinState::LockedOut { unlock_time: t.duration_since(UNIX_EPOCH).unwrap() })
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -140,6 +175,22 @@ pub enum UsbState {
     NeedsPin,
 
     /// USB tapped, received credential
+    Completed,
+
+    // This isn't actually sent from the server.
+    UserCancelled,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub enum InternalDeviceState {
+    /// Not awaiting for internal FIDO device.
+    #[default]
+    Idle,
+
+    /// The device needs the PIN to be entered.
+    NeedsPin,
+
+    /// Internal device credentials
     Completed,
 
     // This isn't actually sent from the server.

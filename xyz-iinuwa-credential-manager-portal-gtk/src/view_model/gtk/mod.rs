@@ -197,6 +197,9 @@ impl ViewModel {
             Transport::Usb => {
 
             },
+            Transport::Internal => {
+
+            },
             _ => { todo!(); }
         }
         self.set_selected_device(&device.into());
@@ -204,6 +207,10 @@ impl ViewModel {
 
     pub async fn send_thingy(&self) {
         self.send_event(ViewEvent::ButtonClicked).await;
+    }
+
+    pub async fn send_internal_device_pin(&self, pin: String) {
+        self.send_event(ViewEvent::InternalPinEntered(pin)).await;
     }
 
     pub async fn send_usb_device_pin(&self, pin: String) {
