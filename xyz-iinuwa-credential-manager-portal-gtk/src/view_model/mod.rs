@@ -6,7 +6,7 @@ use std::time::Duration;
 use async_std::prelude::*;
 use async_std::{channel::{Receiver, Sender}, sync::Mutex};
 
-use crate::credential_service::CredentialService;
+use crate::credential_service::{CredentialService, InternalDeviceState};
 
 #[derive(Debug)]
 pub(crate) struct ViewModel {
@@ -21,14 +21,16 @@ pub(crate) struct ViewModel {
     // This includes devices like platform authenticator, USB, hybrid
     devices: Vec<Device>,
     selected_device: Option<Device>,
+    selected_credential: Option<String>,
 
     providers: Vec<Provider>,
 
     internal_uv_methods: Vec<UserVerificationMethod>,
     internal_selected_uv_method: UserVerificationMethod,
     internal_device_credentials: Vec<Credential>,
-    internal_device_pin_state: InternalPinState,
+    internal_device_pin_state: InternalPinState, // TOOD: I think this is a duplicate
     internal_fingerprint_sensor_state: FingerprintSensorState,
+    internal_device_state: InternalDeviceState,
 
     usb_device_state: UsbState,
     usb_device_pin_state: UsbPinState,
@@ -52,10 +54,12 @@ impl ViewModel {
             title: String::default(),
             devices: Vec::new(),
             selected_device: None,
+            selected_credential: None,
             providers: Vec::new(),
             internal_uv_methods: Vec::new(),
             internal_selected_uv_method: UserVerificationMethod::default(),
             internal_device_credentials: Vec::new(),
+            internal_device_state: InternalDeviceState::default(),
             internal_device_pin_state: InternalPinState::default(),
             internal_fingerprint_sensor_state: FingerprintSensorState::default(),
             usb_device_state: UsbState::default(),
@@ -145,10 +149,12 @@ impl ViewModel {
             }
             match prev_device.transport {
                 Transport::Usb => { self.credential_service.lock().await.cancel_device_discovery_usb().await.unwrap() },
-                Transport::Internal => {
+                Transport::Internal { .. } => {
+                    self.credential_service.lock().await.cancel_device_discovery_internal().await.unwrap();
                 },
                 _ => { todo!() }
             };
+            self.selected_credential = None;
         }
 
         // start discovery for newly selected device
@@ -173,6 +179,23 @@ impl ViewModel {
                 });
             },
             Transport::Internal => {
+                let cred_service = self.credential_service.clone();
+                _ = self.credential_service.lock().await.start_device_discovery_internal().await.unwrap();
+                let tx = self.bg_update.clone();
+                async_std::task::spawn(async move {
+                    // TODO: repeat poll in loop
+                    async_std::task::sleep(Duration::from_millis(150)).await;
+                    // TODO: add cancellation
+                    let mut prev_state = InternalDeviceState::default();
+                    while let Ok(internal_state) = cred_service.lock().await.poll_device_discovery_internal().await {
+                        let state = internal_state.into();
+                        if prev_state != state {
+                            println!("{:?}", state);
+                            tx.send(BackgroundEvent::InternalDeviceStateChanged(state.clone())).await.unwrap();
+                        }
+                        prev_state = state;
+                    }
+                });
             }
             _ => { todo!() }
         }
@@ -203,19 +226,23 @@ impl ViewModel {
                     let state = self.credential_service.lock().await.validate_internal_device_pin(&pin).await.unwrap();
                     println!("{:?}", state);
                     match state {
-                        InternalPinState::PinCorrect => {
-                            self.tx_update.send(ViewUpdate::Completed).await.unwrap();
+                        InternalPinState::PinCorrect { completion_token } => {
+                            // I think this will be handled by the bacground polling
+                            // Otherwise, we might want to show some sort of check mark that the pin is correct before transitioning to complete.
+                            // self.credential_service.lock().await.complete_auth(self.selected_device.completion_token);
+                            // self.tx_update.send(ViewUpdate::).await.unwrap();
                         }
                         _ => todo!(),
                     }
                 },
-                Event::View(ViewEvent::CredentialSelected(_cred)) => {
-                    todo!();
+                Event::View(ViewEvent::CredentialSelected(cred_id)) => {
+                    println!("Credential selected: {:?}. Current Device: {:?}", cred_id, self.selected_device);
+                    self.tx_update.send(ViewUpdate::SelectCredential(cred_id)).await.unwrap();
                 },
 
                 Event::Background(BackgroundEvent::UsbPressed) => {
                     println!("UsbPressed");
-                }
+                },
                 Event::Background(BackgroundEvent::UsbStateChanged(state)) => {
                     self.usb_device_state = state;
                     match self.usb_device_state {
@@ -227,7 +254,19 @@ impl ViewModel {
                         }
                         _ => {},
                     }
-                }
+                },
+                Event::Background(BackgroundEvent::InternalDeviceStateChanged(state)) => {
+                    self.internal_device_state = state;
+                    match self.internal_device_state {
+                        // InternalDeviceState::NeedsPin => {
+                        //     self.tx_update.send(ViewUpdate::InternalDeviceNeedsPin).await.unwrap();
+                        // },
+                        InternalDeviceState::Completed => {
+                            self.tx_update.send(ViewUpdate::Completed).await.unwrap();
+                        }
+                        _ => {},
+                    }
+                },
             };
         }
     }
@@ -247,6 +286,7 @@ pub enum ViewUpdate {
     SetDevices(Vec<Device>),
     SetCredentials(Vec<Credential>),
     SelectDevice(Device),
+    SelectCredential(String),
     UsbNeedsPin,
     Completed
 }
@@ -254,6 +294,7 @@ pub enum ViewUpdate {
 pub enum BackgroundEvent {
     UsbPressed,
     UsbStateChanged(UsbState),
+    InternalDeviceStateChanged(InternalDeviceState),
 }
 
 pub enum Event {
@@ -318,7 +359,7 @@ pub enum InternalPinState {
 
     LockedOut { unlock_time: Duration },
 
-    PinCorrect,
+    PinCorrect { completion_token: String },
 }
 
 #[derive(Debug)]
@@ -330,7 +371,7 @@ pub enum Operation {
 #[derive(Debug, Default)]
 pub struct Provider;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Transport {
     Ble,
     HybridLinked,

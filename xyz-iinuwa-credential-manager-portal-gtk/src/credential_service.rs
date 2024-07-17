@@ -1,5 +1,6 @@
-
 use std::{ops::Add, thread, time::{Duration, SystemTime, UNIX_EPOCH }};
+
+use async_std::task;
 
 use crate::view_model::{Device, InternalPinState, Transport};
 
@@ -136,7 +137,7 @@ impl CredentialService {
         }
         if pin == "123456" {
             self.internal_device_state = InternalDeviceState::Completed;
-            Ok(InternalPinState::PinCorrect)
+            Ok(InternalPinState::PinCorrect { completion_token: "pin".to_string() })
         } else {
             self.internal_device_state = InternalDeviceState::NeedsPin;
             self.internal_pin_attempts_left -= 1;
@@ -148,6 +149,31 @@ impl CredentialService {
                 Ok(InternalPinState::LockedOut { unlock_time: t.duration_since(UNIX_EPOCH).unwrap() })
             }
         }
+    }
+
+    pub(crate) async fn start_device_discovery_internal(&mut self) -> Result<InternalDeviceState, String> {
+        println!("frontend: Start Internal flow");
+        if let InternalDeviceState::Idle = self.internal_device_state {
+            self.internal_device_state = InternalDeviceState::NeedsPin;
+            Ok(self.internal_device_state )
+        } else {
+            Err(format!("Invalid state to begin discovery: {:?}", self.internal_device_state))
+        }
+    }
+
+    pub(crate) async fn poll_device_discovery_internal(&mut self) -> Result<InternalDeviceState, String> {
+        task::sleep(Duration::from_millis(5)).await;
+
+        if let InternalDeviceState::Idle = self.internal_device_state {
+            return Err(String::from("Internal polling not started."));
+        }
+
+        Ok(self.internal_device_state)
+    }
+
+    pub(crate) async fn cancel_device_discovery_internal(&mut self) -> Result<(), String> {
+        self.internal_device_state = InternalDeviceState::Idle;
+        Ok(())
     }
 }
 

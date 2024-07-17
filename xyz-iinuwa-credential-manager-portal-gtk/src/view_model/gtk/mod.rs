@@ -37,6 +37,9 @@ mod imp {
         pub selected_device: RefCell<Option<DeviceObject>>,
 
         #[property(get, set)]
+        pub selected_credential: RefCell<Option<String>>,
+
+        #[property(get, set)]
         pub usb_pin_entry_visible: RefCell<bool>,
 
         #[property(get, set)]
@@ -93,6 +96,7 @@ impl ViewModel {
                             ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
                             ViewUpdate::SetCredentials(credentials) => { view_model.update_credentials(&credentials) },
                             ViewUpdate::SelectDevice(device) => { view_model.select_device(&device) },
+                            ViewUpdate::SelectCredential(cred_id) => { view_model.select_credential(cred_id) },
                             ViewUpdate::UsbNeedsPin => { view_model.set_usb_pin_entry_visible(true) },
                             ViewUpdate::Completed => { view_model.set_completed(true) }
                         }
@@ -203,6 +207,11 @@ impl ViewModel {
             _ => { todo!(); }
         }
         self.set_selected_device(&device.into());
+        self.set_selected_credential("");
+    }
+
+    fn select_credential(&self, cred_id: String) {
+        self.set_selected_credential(cred_id);
     }
 
     pub async fn send_thingy(&self) {

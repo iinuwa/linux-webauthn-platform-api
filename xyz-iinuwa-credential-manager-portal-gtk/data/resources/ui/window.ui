@@ -63,6 +63,7 @@
                     </child>
                     <child>
                       <object class="GtkScrolledWindow">
+                        <property name="min-content-height">256</property>
                         <binding name="child">
                           <lookup name="devices">
                             <lookup name="view-model">
@@ -114,6 +115,35 @@
 
             <child>
               <object class="GtkStackPage">
+                <property name="name">choose_credential</property>
+                <property name="title">Choose credential</property>
+                <property name="child">
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="label">Credentials</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkScrolledWindow">
+                        <property name="min-content-height">256</property>
+                        <binding name="child">
+                          <lookup name="credentials">
+                            <lookup name="view-model">
+                              ExampleApplicationWindow
+                            </lookup>
+                          </lookup>
+                        </binding>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+              </object>
+            </child>
+
+            <child>
+              <object class="GtkStackPage">
                 <property name="name">internal</property>
                 <property name="title">This device</property>
                 <property name="child">
@@ -130,7 +160,6 @@
                         <property name="placeholder-text">Enter your device PIN</property>
                       </object>
                     </child>
-
                   </object>
                 </property>
               </object>

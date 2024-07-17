@@ -152,6 +152,22 @@ impl ExampleApplicationWindow {
             let d = vm.selected_device();
             let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
             match d.transport().try_into() {
+                // TODO: Can multiple resident_keys exist on USB for same origin?
+                //       If so, we need to transition this to choose_credential as well.
+                //       For now, we'll skip it.
+                Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
+                Ok(Transport::Internal) => stack.set_visible_child_name("choose_credential"),
+                _ => { },
+            };
+        }));
+
+        view_model.connect_selected_credential_notify(clone!(@weak stack => move |vm| {
+            let c = vm.selected_credential();
+            if c.is_none() || c.unwrap().len() == 0 { return; }
+
+            let d = vm.selected_device();
+            let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
+            match d.transport().try_into() {
                 Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
                 Ok(Transport::Internal) => stack.set_visible_child_name("internal"),
                 _ => { },
