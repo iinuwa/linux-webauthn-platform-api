@@ -17,6 +17,8 @@ pub struct CredentialService {
     internal_device_state: InternalDeviceState,
     internal_pin_attempts_left: u32,
     internal_pin_unlock_time: Option<SystemTime>,
+
+    completed_credential: Option<(Device, String)>,
 }
 
 impl CredentialService {
@@ -41,6 +43,8 @@ impl CredentialService {
             internal_device_state: InternalDeviceState::Idle,
             internal_pin_attempts_left: 5,
             internal_pin_unlock_time: None,
+
+            completed_credential: None,
         }
     }
 
@@ -123,7 +127,7 @@ impl CredentialService {
         Ok(&self.internal_device_credentials)
     }
 
-    pub(crate) async fn validate_internal_device_pin(&mut self, pin: &str) -> Result<InternalPinState, ()> {
+    pub(crate) async fn validate_internal_device_pin(&mut self, pin: &str, cred_id: &str) -> Result<InternalPinState, ()> {
         // TODO: Should this have the selected credential ID included with it to make sure the
         // frontend and backend are talking about the same credential?
         let now = SystemTime::now();
@@ -136,7 +140,8 @@ impl CredentialService {
             }
         }
         if pin == "123456" {
-            self.internal_device_state = InternalDeviceState::Completed;
+            let device = self.devices.iter().find(|d| d.transport == Transport::Internal).unwrap().clone();
+            self.internal_device_state = InternalDeviceState::Completed { device, cred_id: cred_id.to_owned() };
             Ok(InternalPinState::PinCorrect { completion_token: "pin".to_string() })
         } else {
             self.internal_device_state = InternalDeviceState::NeedsPin;
@@ -155,7 +160,7 @@ impl CredentialService {
         println!("frontend: Start Internal flow");
         if let InternalDeviceState::Idle = self.internal_device_state {
             self.internal_device_state = InternalDeviceState::NeedsPin;
-            Ok(self.internal_device_state )
+            Ok(self.internal_device_state.clone())
         } else {
             Err(format!("Invalid state to begin discovery: {:?}", self.internal_device_state))
         }
@@ -168,13 +173,22 @@ impl CredentialService {
             return Err(String::from("Internal polling not started."));
         }
 
-        Ok(self.internal_device_state)
+        Ok(self.internal_device_state.clone())
     }
 
     pub(crate) async fn cancel_device_discovery_internal(&mut self) -> Result<(), String> {
         self.internal_device_state = InternalDeviceState::Idle;
         Ok(())
     }
+
+    pub(crate) fn complete_auth(&mut self, device: &Device, cred_id: &str) {
+        self.completed_credential = Some((device.clone(), cred_id.to_owned()));
+    }
+
+    pub(crate) fn get_completed_credential(&self) -> Result<&(Device, String), String> {
+        self.completed_credential.as_ref().ok_or_else(||"Credential operation not completed".to_string())
+    }
+
 }
 
 #[derive(Clone, Copy)]
@@ -207,7 +221,7 @@ pub enum UsbState {
     UserCancelled,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum InternalDeviceState {
     /// Not awaiting for internal FIDO device.
     #[default]
@@ -217,7 +231,7 @@ pub enum InternalDeviceState {
     NeedsPin,
 
     /// Internal device credentials
-    Completed,
+    Completed { device: Device, cred_id: String },
 
     // This isn't actually sent from the server.
     UserCancelled,

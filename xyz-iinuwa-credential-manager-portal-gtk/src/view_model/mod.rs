@@ -223,7 +223,9 @@ impl ViewModel {
                     _ = self.credential_service.lock().await.validate_usb_device_pin(&pin).await.unwrap();
                 },
                 Event::View(ViewEvent::InternalPinEntered(pin)) => {
-                    let state = self.credential_service.lock().await.validate_internal_device_pin(&pin).await.unwrap();
+                    // TODO: This might be racy; put cred_id in the view event instead.
+                    let cred_id = self.selected_credential.as_ref().unwrap();
+                    let state = self.credential_service.lock().await.validate_internal_device_pin(&pin, cred_id).await.unwrap();
                     println!("{:?}", state);
                     match state {
                         InternalPinState::PinCorrect { completion_token } => {
@@ -256,12 +258,13 @@ impl ViewModel {
                     }
                 },
                 Event::Background(BackgroundEvent::InternalDeviceStateChanged(state)) => {
-                    self.internal_device_state = state;
-                    match self.internal_device_state {
+                    self.internal_device_state = state.clone();
+                    match state {
                         // InternalDeviceState::NeedsPin => {
                         //     self.tx_update.send(ViewUpdate::InternalDeviceNeedsPin).await.unwrap();
                         // },
-                        InternalDeviceState::Completed => {
+                        InternalDeviceState::Completed { device, cred_id } => {
+                            self.credential_service.lock().await.complete_auth(&device, &cred_id);
                             self.tx_update.send(ViewUpdate::Completed).await.unwrap();
                         }
                         _ => {},

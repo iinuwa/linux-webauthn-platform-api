@@ -4,6 +4,7 @@ mod cbor;
 mod config;
 mod credential_service;
 mod dbus;
+mod store;
 #[allow(dead_code)]
 mod view_model;
 mod webauthn;
