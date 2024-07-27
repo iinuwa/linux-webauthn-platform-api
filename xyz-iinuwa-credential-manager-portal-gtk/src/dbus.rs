@@ -1,7 +1,7 @@
-use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use std::thread::JoinHandle;
 
 use async_std::channel::Receiver;
 use async_std::channel::Sender;
@@ -27,40 +27,13 @@ use crate::webauthn;
 // use crate::webauthn;
 
 pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Connection> {
-    let lock = Arc::new(Mutex::new(false));
-    let lock2 = lock.clone();
-    let (tx, thread_signal) = mpsc::channel::<()>();
-    let (tx_completed, rx_completed) = mpsc::channel::<(Device, String)>();
-    thread::Builder::new()
-        .name("gui".into())
-        .spawn(move || {
-            while let Ok(()) = thread_signal.recv() {
-                let (tx_update, rx_update) = async_std::channel::unbounded::<ViewUpdate>();
-                let (tx_event, rx_event) = async_std::channel::unbounded::<ViewEvent>();
-                let credential_service = CredentialService::new();
-                let event_loop = async_std::task::spawn(async move {
-                    let operation = Operation::Create { cred_type: CredentialType::Passkey };
-                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event, tx_update);
-                    vm.start_event_loop().await;
-                    println!("event loop ended?");
-                });
-                start_gtk_app(tx_event, rx_update);
-                // credential_service.get_completed_credential().unwrap();
-
-                async_std::task::block_on(event_loop.cancel());
-                let mut running = lock2.lock().unwrap();
-                *running = false;
-            }
-        })
-        .unwrap();
+    let lock = Arc::new(async_std::sync::Mutex::new(()));
     ConnectionBuilder::session()?
         .name(service_name)?
         .serve_at(
             path,
             CredentialManager {
-                app_signaller: tx,
                 app_lock: lock,
-                completed_signaller: rx_completed,
             },
         )?
         .build()
@@ -87,36 +60,17 @@ fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
 }
 
 struct CredentialManager {
-    app_signaller: mpsc::Sender<()>,
-    app_lock: Arc<Mutex<bool>>,
-    completed_signaller: mpsc::Receiver<(Device, String)>
+    app_lock: Arc<async_std::sync::Mutex<()>>,
 }
 
 #[interface(name = "xyz.iinuwa.credentials.CredentialManagerUi1")]
 impl CredentialManager {
-    async fn start_app(&self) {
-        if let Ok(mut running) = self.app_lock.try_lock() {
-            if !*running {
-                *running = true;
-                self.app_signaller.send(()).unwrap();
-            } else {
-                tracing::debug!("Window already open");
-            }
-        } else {
-            tracing::debug!("Window already open");
-        }
-    }
 
     async fn create_credential(
         &self,
         request: CreateCredentialRequest,
     ) -> fdo::Result<CreateCredentialResponse> {
-        if let Ok(mut running) = self.app_lock.try_lock() {
-            if *running {
-                tracing::debug!("Window already open");
-                return Err(fdo::Error::Failed("Session already running".to_string()));
-            }
-            *running = true;
+        if self.app_lock.try_lock().is_some() {
             let origin = request
                 .origin
                 .unwrap_or("xyz.iinuwa.credentials.CredentialManager:local".to_string());
@@ -130,25 +84,49 @@ impl CredentialManager {
                     Ok(password_response.into())
                 }
                 ("publicKey", _, Some(passkey_request)) => {
-                    let passkey_response = create_passkey(&origin, passkey_request).await?;
-                    Ok(passkey_response.into())
+                    let (device, cred_id) = async_std::task::spawn_blocking(|| start_thread().join()).await.unwrap();
+                    match device.transport {
+                        Transport::Internal => Ok(create_passkey(&origin, passkey_request).await?.into()),
+                        _ => todo!("Transport {:?} not implemented", device.transport),
+                    }
                 }
                 _ => Err(fdo::Error::Failed(
                     "Unknown credential request type".to_string(),
                 )),
             };
-            self.app_signaller.send(()).unwrap();
-            let (device, cred_id) = self.completed_signaller.recv().unwrap();
-            // TODO: need cred_type here for password vs. passkey
-            match device.transport {
-                Transport::Internal => Ok(create_passkey(&origin, passkey_request).await?.into()),
-                _ => todo!("Transport {:?} not implemented", device.transport),
-            }
+            response
         } else {
             tracing::debug!("Window already open");
             Err(fdo::Error::ObjectPathInUse("WebAuthn session already open.".into()))
         }
     }
+}
+
+fn start_thread() -> JoinHandle<(Device, String)> {
+    thread::Builder::new()
+        .name("gui".into())
+        .spawn(move || {
+            let (tx_update, rx_update) = async_std::channel::unbounded::<ViewUpdate>();
+            let (tx_event, rx_event) = async_std::channel::unbounded::<ViewEvent>();
+            let data = Arc::new(Mutex::new(None));
+            let credential_service = CredentialService::new(data.clone());
+            let event_loop = async_std::task::spawn(async move {
+                let operation = Operation::Create { cred_type: CredentialType::Passkey };
+                let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event, tx_update);
+                vm.start_event_loop().await;
+                println!("event loop ended?");
+            });
+            start_gtk_app(tx_event, rx_update);
+            // credential_service.get_completed_credential().unwrap();
+
+            async_std::task::block_on(event_loop.cancel());
+            let response = data.lock().unwrap();
+            // tx_completed.send(response.as_ref().unwrap().clone()).unwrap();
+            // let mut running = lock2.lock().unwrap();
+            // *running = false;
+            return response.as_ref().unwrap().clone();
+        })
+        .unwrap()
 }
 
 async fn create_password(
@@ -220,7 +198,7 @@ async fn create_passkey(
     .map_err(|_| fdo::Error::Failed("Failed to save passkey to storage".to_string()))?;
 
     Ok(CreatePublicKeyCredentialResponse {
-        request_json: response.to_json(),
+        registration_response_json: response.to_json(),
     })
 }
 
@@ -275,7 +253,7 @@ impl From<CreatePasswordCredentialResponse> for CreateCredentialResponse{
 #[derive(SerializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct CreatePublicKeyCredentialResponse {
-    request_json: String,
+    registration_response_json: String,
 }
 
 impl From<CreatePublicKeyCredentialResponse > for CreateCredentialResponse {

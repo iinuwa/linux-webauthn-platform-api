@@ -1,4 +1,4 @@
-use std::{ops::Add, thread, time::{Duration, SystemTime, UNIX_EPOCH }};
+use std::{ops::Add, sync::{Arc, Mutex}, thread, time::{Duration, SystemTime, UNIX_EPOCH }};
 
 use async_std::task;
 
@@ -18,11 +18,11 @@ pub struct CredentialService {
     internal_pin_attempts_left: u32,
     internal_pin_unlock_time: Option<SystemTime>,
 
-    completed_credential: Option<(Device, String)>,
+    data: Arc<Mutex<Option<(Device, String)>>>,
 }
 
 impl CredentialService {
-    pub fn new() -> Self {
+    pub fn new(data: Arc<Mutex<Option<(Device, String)>>>) -> Self {
         let devices = vec![
             Device { id: String::from("0"), transport: Transport::Usb },
             Device { id: String::from("1"), transport: Transport::Internal },
@@ -44,7 +44,7 @@ impl CredentialService {
             internal_pin_attempts_left: 5,
             internal_pin_unlock_time: None,
 
-            completed_credential: None,
+            data,
         }
     }
 
@@ -182,11 +182,8 @@ impl CredentialService {
     }
 
     pub(crate) fn complete_auth(&mut self, device: &Device, cred_id: &str) {
-        self.completed_credential = Some((device.clone(), cred_id.to_owned()));
-    }
-
-    pub(crate) fn get_completed_credential(&self) -> Result<&(Device, String), String> {
-        self.completed_credential.as_ref().ok_or_else(||"Credential operation not completed".to_string())
+        let mut data = self.data.lock().unwrap();
+        data.replace((device.clone(), cred_id.to_owned()));
     }
 
 }
