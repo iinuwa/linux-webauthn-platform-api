@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import asyncio
 import base64
 import json
@@ -13,19 +15,19 @@ async def run():
     with open('xyz.iinuwa.credentials.CredentialManager.xml', 'r') as f:
         introspection = f.read()
 
-    proxy_object = bus.get_proxy_object('xyz.iinuwa.credentials.CredentialManager',
-                                        '/xyz/iinuwa/credentials/CredentialManager',
+    proxy_object = bus.get_proxy_object('xyz.iinuwa.credentials.CredentialManagerUi',
+                                        '/xyz/iinuwa/credentials/CredentialManagerUi',
                                         introspection)
 
     interface = proxy_object.get_interface(
-        'xyz.iinuwa.credentials.CredentialManager1')
+        'xyz.iinuwa.credentials.CredentialManagerUi1')
 
     rsp = await create_passkey(interface)
     print(rsp)
     # rsp = await create_password(interface)
     # print(rsp)
-    rsp = await get_password(interface)
-    print(rsp)
+    # rsp = await get_password(interface)
+    # print(rsp)
     # await bus.wait_for_disconnect()
 
 
@@ -94,7 +96,7 @@ async def create_passkey(interface):
     }
     rsp = await interface.call_create_credential(req)
     if rsp['type'].value == 'public-key':
-        return rsp['public_key'].value['credential_creation_data_json'].value
+        return json.loads(rsp['public_key'].value['registration_response_json'].value)
 
 
 async def make_passkey(interface):
