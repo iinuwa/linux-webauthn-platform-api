@@ -239,6 +239,7 @@ impl ViewModel {
                 },
                 Event::View(ViewEvent::CredentialSelected(cred_id)) => {
                     println!("Credential selected: {:?}. Current Device: {:?}", cred_id, self.selected_device);
+                    self.selected_credential = Some(cred_id.clone());
                     self.tx_update.send(ViewUpdate::SelectCredential(cred_id)).await.unwrap();
                 },
 
