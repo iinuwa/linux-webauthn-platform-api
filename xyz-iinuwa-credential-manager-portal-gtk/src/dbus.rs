@@ -74,7 +74,7 @@ fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
     gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
     gettextrs::textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
 
-    if let None = glib::application_name() {
+    if glib::application_name().is_none() {
         glib::set_application_name(&gettext("Credential Manager"));
     }
     let res = gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");

@@ -169,7 +169,7 @@ impl ViewModel {
     }
 
     pub(crate) async fn select_device(&mut self, id: &str) {
-        let device = self.devices.iter().find(|d| &d.id == id).unwrap();
+        let device = self.devices.iter().find(|d| d.id == id).unwrap();
         println!("{:?}", device);
 
         // Handle previous device
@@ -246,20 +246,19 @@ impl ViewModel {
                     async_std::task::sleep(Duration::from_millis(150)).await;
                     // TODO: add cancellation
                     let mut prev_state = InternalDeviceState::default();
-                    while let Ok(internal_state) = cred_service
+                    while let Ok(current_state) = cred_service
                         .lock()
                         .await
                         .poll_device_discovery_internal()
                         .await
                     {
-                        let state = internal_state.into();
-                        if prev_state != state {
-                            println!("{:?}", state);
-                            tx.send(BackgroundEvent::InternalDeviceStateChanged(state.clone()))
+                        if prev_state != current_state {
+                            println!("{:?}", current_state);
+                            tx.send(BackgroundEvent::InternalDeviceStateChanged(current_state.clone()))
                                 .await
                                 .unwrap();
                         }
-                        prev_state = state;
+                        prev_state = current_state;
                     }
                 });
             }
@@ -514,11 +513,12 @@ impl TryInto<Transport> for &str {
     }
 }
 
-impl Into<String> for Transport {
-    fn into(self) -> String {
-        self.as_str().to_string()
+impl From<Transport> for String {
+    fn from(val: Transport) -> Self {
+        val.as_str().to_string()
     }
 }
+
 
 impl Transport {
     fn as_str(&self) -> &'static str {
@@ -555,9 +555,9 @@ pub enum UsbState {
     UserCancelled,
 }
 
-impl Into<UsbState> for crate::credential_service::UsbState {
-    fn into(self) -> UsbState {
-        match self {
+impl From<crate::credential_service::UsbState> for UsbState {
+    fn from(val: crate::credential_service::UsbState) -> Self {
+        match val {
             crate::credential_service::UsbState::Idle => UsbState::NotListening,
             crate::credential_service::UsbState::Waiting => UsbState::Waiting,
             crate::credential_service::UsbState::Connected => UsbState::Connected,

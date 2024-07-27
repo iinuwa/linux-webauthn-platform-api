@@ -140,7 +140,6 @@ pub(crate) async fn lookup_password_credentials(origin: &str) -> Option<(String,
     None
 }
 
-
 fn get_cred_dir() -> PathBuf {
     let data_home = if let Ok(data_home) = env::var("XDG_DATA_HOME") {
         PathBuf::from_str(&data_home).unwrap()

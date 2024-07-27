@@ -163,7 +163,7 @@ impl ExampleApplicationWindow {
 
         view_model.connect_selected_credential_notify(clone!(@weak stack => move |vm| {
             let c = vm.selected_credential();
-            if c.is_none() || c.unwrap().len() == 0 { return; }
+            if c.is_none() || c.unwrap().is_empty() { return; }
 
             let d = vm.selected_device();
             let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
