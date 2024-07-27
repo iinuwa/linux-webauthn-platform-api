@@ -13,8 +13,8 @@ use crate::window::ExampleApplicationWindow;
 
 mod imp {
     use super::*;
-    use glib::WeakRef;
-    use std::cell::{OnceCell, RefCell};
+    use glib::{clone, WeakRef};
+    use std::{cell::{OnceCell, RefCell}, time::Duration};
 
     #[derive(Debug, Default)]
     pub struct ExampleApplication {
@@ -45,10 +45,21 @@ mod imp {
                 return;
             }
 
-            let tx = self.tx.take().expect("receiver to be initiated");
+            let tx = self.tx.take().expect("sender to be initiated");
             let rx = self.rx.take().expect("receiver to be initiated");
             let view_model = ViewModel::new(tx, rx);
+            let vm2 = view_model.clone();
             let window = ExampleApplicationWindow::new(&app, view_model);
+            let window2 = window.clone();
+            vm2.clone().connect_completed_notify(move |vm| {
+                if vm.completed() {
+                    glib::spawn_future_local(clone!(@weak vm, @weak window2 => async move {
+                        // Wait to show confirmation before closing.
+                        async_std::task::sleep(Duration::from_millis(500)).await;
+                        gtk::prelude::WidgetExt::activate_action(&window2, "window.close", None).unwrap()
+                    }));
+                }
+            });
             self.window
                 .set(window.downgrade())
                 .expect("Window already set.");
