@@ -1,4 +1,9 @@
-use std::{ops::Add, sync::{Arc, Mutex}, thread, time::{Duration, SystemTime, UNIX_EPOCH }};
+use std::{
+    ops::Add,
+    sync::{Arc, Mutex},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use async_std::task;
 
@@ -24,12 +29,28 @@ pub struct CredentialService {
 impl CredentialService {
     pub fn new(data: Arc<Mutex<Option<(Device, String)>>>) -> Self {
         let devices = vec![
-            Device { id: String::from("0"), transport: Transport::Usb },
-            Device { id: String::from("1"), transport: Transport::Internal },
+            Device {
+                id: String::from("0"),
+                transport: Transport::Usb,
+            },
+            Device {
+                id: String::from("1"),
+                transport: Transport::Internal,
+            },
         ];
         let internal_device_credentials = vec![
-            CredentialMetadata { id: String::from("0"), origin: String::from("foo.example.com"), display_name: String::from("Foo"), username: String::from("joecool") },
-            CredentialMetadata { id: String::from("1"), origin: String::from("bar.example.org"), display_name: String::from("Bar"), username: String::from("cooliojoe") },
+            CredentialMetadata {
+                id: String::from("0"),
+                origin: String::from("foo.example.com"),
+                display_name: String::from("Foo"),
+                username: String::from("joecool"),
+            },
+            CredentialMetadata {
+                id: String::from("1"),
+                origin: String::from("bar.example.org"),
+                display_name: String::from("Bar"),
+                username: String::from("cooliojoe"),
+            },
         ];
         Self {
             devices,
@@ -71,7 +92,7 @@ impl CredentialService {
 
         match self.usb_state {
             // process polling
-            UsbState::Waiting  => { }
+            UsbState::Waiting => {}
             UsbState::Idle => return Err(String::from("USB polling not started.")),
             // UsbPinState::Completed => return Err(String::from("USB polling not started.")),
             _ => {}
@@ -92,7 +113,9 @@ impl CredentialService {
                 msg.replace("frontend: FIDO USB token requested PIN unlock");
                 self.usb_state = UsbState::NeedsPin;
             } else {
-                msg.replace("frontend: Received user verification and credential from FIDO USB device.");
+                msg.replace(
+                    "frontend: Received user verification and credential from FIDO USB device.",
+                );
                 self.usb_poll_count = -1;
                 self.usb_state = UsbState::Completed;
             }
@@ -123,11 +146,17 @@ impl CredentialService {
         }
     }
 
-    pub(crate) async fn get_internal_device_credentials(&self) -> Result<&Vec<CredentialMetadata>, ()> {
+    pub(crate) async fn get_internal_device_credentials(
+        &self,
+    ) -> Result<&Vec<CredentialMetadata>, ()> {
         Ok(&self.internal_device_credentials)
     }
 
-    pub(crate) async fn validate_internal_device_pin(&mut self, pin: &str, cred_id: &str) -> Result<InternalPinState, ()> {
+    pub(crate) async fn validate_internal_device_pin(
+        &mut self,
+        pin: &str,
+        cred_id: &str,
+    ) -> Result<InternalPinState, ()> {
         // TODO: Should this have the selected credential ID included with it to make sure the
         // frontend and backend are talking about the same credential?
         let now = SystemTime::now();
@@ -140,33 +169,54 @@ impl CredentialService {
             }
         }
         if pin == "123456" {
-            let device = self.devices.iter().find(|d| d.transport == Transport::Internal).unwrap().clone();
-            self.internal_device_state = InternalDeviceState::Completed { device, cred_id: cred_id.to_owned() };
-            Ok(InternalPinState::PinCorrect { completion_token: "pin".to_string() })
+            let device = self
+                .devices
+                .iter()
+                .find(|d| d.transport == Transport::Internal)
+                .unwrap()
+                .clone();
+            self.internal_device_state = InternalDeviceState::Completed {
+                device,
+                cred_id: cred_id.to_owned(),
+            };
+            Ok(InternalPinState::PinCorrect {
+                completion_token: "pin".to_string(),
+            })
         } else {
             self.internal_device_state = InternalDeviceState::NeedsPin;
             self.internal_pin_attempts_left -= 1;
             if self.internal_pin_attempts_left > 0 {
-                Ok(InternalPinState::PinIncorrect { attempts_left: self.internal_pin_attempts_left })
+                Ok(InternalPinState::PinIncorrect {
+                    attempts_left: self.internal_pin_attempts_left,
+                })
             } else {
                 let t = now.add(Duration::from_secs(10));
                 self.internal_pin_unlock_time = Some(t);
-                Ok(InternalPinState::LockedOut { unlock_time: t.duration_since(UNIX_EPOCH).unwrap() })
+                Ok(InternalPinState::LockedOut {
+                    unlock_time: t.duration_since(UNIX_EPOCH).unwrap(),
+                })
             }
         }
     }
 
-    pub(crate) async fn start_device_discovery_internal(&mut self) -> Result<InternalDeviceState, String> {
+    pub(crate) async fn start_device_discovery_internal(
+        &mut self,
+    ) -> Result<InternalDeviceState, String> {
         println!("frontend: Start Internal flow");
         if let InternalDeviceState::Idle = self.internal_device_state {
             self.internal_device_state = InternalDeviceState::NeedsPin;
             Ok(self.internal_device_state.clone())
         } else {
-            Err(format!("Invalid state to begin discovery: {:?}", self.internal_device_state))
+            Err(format!(
+                "Invalid state to begin discovery: {:?}",
+                self.internal_device_state
+            ))
         }
     }
 
-    pub(crate) async fn poll_device_discovery_internal(&mut self) -> Result<InternalDeviceState, String> {
+    pub(crate) async fn poll_device_discovery_internal(
+        &mut self,
+    ) -> Result<InternalDeviceState, String> {
         task::sleep(Duration::from_millis(5)).await;
 
         if let InternalDeviceState::Idle = self.internal_device_state {
@@ -185,7 +235,6 @@ impl CredentialService {
         let mut data = self.data.lock().unwrap();
         data.replace((device.clone(), cred_id.to_owned()));
     }
-
 }
 
 #[derive(Clone, Copy)]
@@ -228,7 +277,10 @@ pub enum InternalDeviceState {
     NeedsPin,
 
     /// Internal device credentials
-    Completed { device: Device, cred_id: String },
+    Completed {
+        device: Device,
+        cred_id: String,
+    },
 
     // This isn't actually sent from the server.
     UserCancelled,

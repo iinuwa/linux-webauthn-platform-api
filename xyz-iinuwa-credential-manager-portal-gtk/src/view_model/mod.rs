@@ -4,7 +4,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_std::prelude::*;
-use async_std::{channel::{Receiver, Sender}, sync::Mutex};
+use async_std::{
+    channel::{Receiver, Sender},
+    sync::Mutex,
+};
 
 use crate::credential_service::{CredentialService, InternalDeviceState};
 
@@ -42,7 +45,12 @@ pub(crate) struct ViewModel {
 }
 
 impl ViewModel {
-    pub(crate) fn new(operation: Operation, credential_service: CredentialService, rx_event: Receiver<ViewEvent>, tx_update: Sender<ViewUpdate>) -> Self {
+    pub(crate) fn new(
+        operation: Operation,
+        credential_service: CredentialService,
+        rx_event: Receiver<ViewEvent>,
+        tx_update: Sender<ViewUpdate>,
+    ) -> Self {
         let (bg_update, bg_event) = async_std::channel::unbounded::<BackgroundEvent>();
         Self {
             credential_service: Arc::new(Mutex::new(credential_service)),
@@ -66,7 +74,7 @@ impl ViewModel {
             usb_device_pin_state: UsbPinState::default(),
             hybrid_qr_state: HybridState::default(),
             hybrid_qr_code_data: None,
-            hybrid_linked_state: HybridState::default()
+            hybrid_linked_state: HybridState::default(),
         }
     }
     fn start_authentication(&self) {} // open page
@@ -113,29 +121,51 @@ impl ViewModel {
 
     async fn update_title(&mut self) {
         self.title = match self.operation {
-            Operation::Create{ .. } => "Create new credential",
+            Operation::Create { .. } => "Create new credential",
             Operation::Get { .. } => "Use a credential",
-        }.to_string();
-        self.tx_update.send(ViewUpdate::SetTitle(self.title.to_string())).await.unwrap();
+        }
+        .to_string();
+        self.tx_update
+            .send(ViewUpdate::SetTitle(self.title.to_string()))
+            .await
+            .unwrap();
     }
 
     async fn update_devices(&mut self) {
-        let devices = self.credential_service.lock().await.get_available_public_key_devices().await.unwrap();
+        let devices = self
+            .credential_service
+            .lock()
+            .await
+            .get_available_public_key_devices()
+            .await
+            .unwrap();
         self.devices = devices;
-        self.tx_update.send(ViewUpdate::SetDevices(self.devices.to_owned())).await.unwrap();
+        self.tx_update
+            .send(ViewUpdate::SetDevices(self.devices.to_owned()))
+            .await
+            .unwrap();
     }
 
     async fn update_internal_credentials(&mut self) {
         let credential_service = self.credential_service.lock().await;
-        let credentials: Vec<Credential> = credential_service.get_internal_device_credentials().await.unwrap().iter().map(|c| {
-            Credential {
+        let credentials: Vec<Credential> = credential_service
+            .get_internal_device_credentials()
+            .await
+            .unwrap()
+            .iter()
+            .map(|c| Credential {
                 id: c.id.to_owned(),
                 name: c.display_name.to_owned(),
                 username: Some(c.username.to_owned()),
-            }
-        }).collect();
+            })
+            .collect();
         self.internal_device_credentials.extend(credentials);
-        self.tx_update.send(ViewUpdate::SetCredentials(self.internal_device_credentials.to_owned())).await.unwrap();
+        self.tx_update
+            .send(ViewUpdate::SetCredentials(
+                self.internal_device_credentials.to_owned(),
+            ))
+            .await
+            .unwrap();
     }
 
     pub(crate) async fn select_device(&mut self, id: &str) {
@@ -148,11 +178,24 @@ impl ViewModel {
                 return;
             }
             match prev_device.transport {
-                Transport::Usb => { self.credential_service.lock().await.cancel_device_discovery_usb().await.unwrap() },
+                Transport::Usb => self
+                    .credential_service
+                    .lock()
+                    .await
+                    .cancel_device_discovery_usb()
+                    .await
+                    .unwrap(),
                 Transport::Internal { .. } => {
-                    self.credential_service.lock().await.cancel_device_discovery_internal().await.unwrap();
-                },
-                _ => { todo!() }
+                    self.credential_service
+                        .lock()
+                        .await
+                        .cancel_device_discovery_internal()
+                        .await
+                        .unwrap();
+                }
+                _ => {
+                    todo!()
+                }
             };
             self.selected_credential = None;
         }
@@ -161,46 +204,74 @@ impl ViewModel {
         match device.transport {
             Transport::Usb => {
                 let cred_service = self.credential_service.clone();
-                _ = self.credential_service.lock().await.start_device_discovery_usb().await.unwrap();
+                _ = self
+                    .credential_service
+                    .lock()
+                    .await
+                    .start_device_discovery_usb()
+                    .await
+                    .unwrap();
                 let tx = self.bg_update.clone();
                 async_std::task::spawn(async move {
                     // TODO: repeat poll in loop
                     async_std::task::sleep(Duration::from_millis(150)).await;
                     // TODO: add cancellation
                     let mut prev_state = UsbState::default();
-                    while let Ok(usb_state) = cred_service.lock().await.poll_device_discovery_usb().await {
+                    while let Ok(usb_state) =
+                        cred_service.lock().await.poll_device_discovery_usb().await
+                    {
                         let state = usb_state.into();
                         if prev_state != state {
                             println!("{:?}", state);
-                            tx.send(BackgroundEvent::UsbStateChanged(state.clone())).await.unwrap();
+                            tx.send(BackgroundEvent::UsbStateChanged(state.clone()))
+                                .await
+                                .unwrap();
                         }
                         prev_state = state;
                     }
                 });
-            },
+            }
             Transport::Internal => {
                 let cred_service = self.credential_service.clone();
-                _ = self.credential_service.lock().await.start_device_discovery_internal().await.unwrap();
+                _ = self
+                    .credential_service
+                    .lock()
+                    .await
+                    .start_device_discovery_internal()
+                    .await
+                    .unwrap();
                 let tx = self.bg_update.clone();
                 async_std::task::spawn(async move {
                     // TODO: repeat poll in loop
                     async_std::task::sleep(Duration::from_millis(150)).await;
                     // TODO: add cancellation
                     let mut prev_state = InternalDeviceState::default();
-                    while let Ok(internal_state) = cred_service.lock().await.poll_device_discovery_internal().await {
+                    while let Ok(internal_state) = cred_service
+                        .lock()
+                        .await
+                        .poll_device_discovery_internal()
+                        .await
+                    {
                         let state = internal_state.into();
                         if prev_state != state {
                             println!("{:?}", state);
-                            tx.send(BackgroundEvent::InternalDeviceStateChanged(state.clone())).await.unwrap();
+                            tx.send(BackgroundEvent::InternalDeviceStateChanged(state.clone()))
+                                .await
+                                .unwrap();
                         }
                         prev_state = state;
                     }
                 });
             }
-            _ => { todo!() }
+            _ => {
+                todo!()
+            }
         }
 
-        self.tx_update.send(ViewUpdate::SelectDevice(device.clone())).await.unwrap();
+        self.tx_update
+            .send(ViewUpdate::SelectDevice(device.clone()))
+            .await
+            .unwrap();
     }
 
     pub(crate) async fn start_event_loop(&mut self) {
@@ -213,19 +284,33 @@ impl ViewModel {
                     self.update_title().await;
                     self.update_devices().await;
                     self.update_internal_credentials().await;
-                },
-                Event::View(ViewEvent::ButtonClicked) => { println!("Got it!") },
+                }
+                Event::View(ViewEvent::ButtonClicked) => {
+                    println!("Got it!")
+                }
                 Event::View(ViewEvent::DeviceSelected(id)) => {
                     self.select_device(&id).await;
                     println!("Selected device {id}");
-                },
+                }
                 Event::View(ViewEvent::UsbPinEntered(pin)) => {
-                    _ = self.credential_service.lock().await.validate_usb_device_pin(&pin).await.unwrap();
-                },
+                    _ = self
+                        .credential_service
+                        .lock()
+                        .await
+                        .validate_usb_device_pin(&pin)
+                        .await
+                        .unwrap();
+                }
                 Event::View(ViewEvent::InternalPinEntered(pin)) => {
                     // TODO: This might be racy; put cred_id in the view event instead.
                     let cred_id = self.selected_credential.as_ref().unwrap();
-                    let state = self.credential_service.lock().await.validate_internal_device_pin(&pin, cred_id).await.unwrap();
+                    let state = self
+                        .credential_service
+                        .lock()
+                        .await
+                        .validate_internal_device_pin(&pin, cred_id)
+                        .await
+                        .unwrap();
                     println!("{:?}", state);
                     match state {
                         InternalPinState::PinCorrect { completion_token } => {
@@ -236,28 +321,34 @@ impl ViewModel {
                         }
                         _ => todo!(),
                     }
-                },
+                }
                 Event::View(ViewEvent::CredentialSelected(cred_id)) => {
-                    println!("Credential selected: {:?}. Current Device: {:?}", cred_id, self.selected_device);
+                    println!(
+                        "Credential selected: {:?}. Current Device: {:?}",
+                        cred_id, self.selected_device
+                    );
                     self.selected_credential = Some(cred_id.clone());
-                    self.tx_update.send(ViewUpdate::SelectCredential(cred_id)).await.unwrap();
-                },
+                    self.tx_update
+                        .send(ViewUpdate::SelectCredential(cred_id))
+                        .await
+                        .unwrap();
+                }
 
                 Event::Background(BackgroundEvent::UsbPressed) => {
                     println!("UsbPressed");
-                },
+                }
                 Event::Background(BackgroundEvent::UsbStateChanged(state)) => {
                     self.usb_device_state = state;
                     match self.usb_device_state {
                         UsbState::NeedsPin => {
                             self.tx_update.send(ViewUpdate::UsbNeedsPin).await.unwrap();
-                        },
+                        }
                         UsbState::Completed => {
                             self.tx_update.send(ViewUpdate::Completed).await.unwrap();
                         }
-                        _ => {},
+                        _ => {}
                     }
-                },
+                }
                 Event::Background(BackgroundEvent::InternalDeviceStateChanged(state)) => {
                     self.internal_device_state = state.clone();
                     match state {
@@ -265,12 +356,15 @@ impl ViewModel {
                         //     self.tx_update.send(ViewUpdate::InternalDeviceNeedsPin).await.unwrap();
                         // },
                         InternalDeviceState::Completed { device, cred_id } => {
-                            self.credential_service.lock().await.complete_auth(&device, &cred_id);
+                            self.credential_service
+                                .lock()
+                                .await
+                                .complete_auth(&device, &cred_id);
                             self.tx_update.send(ViewUpdate::Completed).await.unwrap();
                         }
-                        _ => {},
+                        _ => {}
                     }
-                },
+                }
             };
         }
     }
@@ -292,7 +386,7 @@ pub enum ViewUpdate {
     SelectDevice(Device),
     SelectCredential(String),
     UsbNeedsPin,
-    Completed
+    Completed,
 }
 
 pub enum BackgroundEvent {
@@ -303,7 +397,7 @@ pub enum BackgroundEvent {
 
 pub enum Event {
     Background(BackgroundEvent),
-    View(ViewEvent)
+    View(ViewEvent),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -359,11 +453,17 @@ pub enum InternalPinState {
     #[default]
     Waiting,
 
-    PinIncorrect { attempts_left: u32 },
+    PinIncorrect {
+        attempts_left: u32,
+    },
 
-    LockedOut { unlock_time: Duration },
+    LockedOut {
+        unlock_time: Duration,
+    },
 
-    PinCorrect { completion_token: String },
+    PinCorrect {
+        completion_token: String,
+    },
 }
 
 #[derive(Debug)]
@@ -404,7 +504,7 @@ impl TryInto<Transport> for &str {
     fn try_into(self) -> Result<Transport, String> {
         match self {
             "BLE" => Ok(Transport::Ble),
-             "HybridLinked" => Ok(Transport::HybridLinked),
+            "HybridLinked" => Ok(Transport::HybridLinked),
             "HybridQr" => Ok(Transport::HybridQr),
             "Internal" => Ok(Transport::Internal),
             "NFC" => Ok(Transport::Nfc),
@@ -473,9 +573,13 @@ pub enum UsbPinState {
     #[default]
     Waiting,
 
-    PinIncorrect { attempts_left: u32 },
+    PinIncorrect {
+        attempts_left: u32,
+    },
 
-    LockedOut { unlock_time: Duration },
+    LockedOut {
+        unlock_time: Duration,
+    },
 
     PinCorrect,
 }

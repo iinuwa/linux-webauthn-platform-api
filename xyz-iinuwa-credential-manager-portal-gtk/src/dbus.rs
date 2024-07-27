@@ -26,16 +26,11 @@ use crate::webauthn;
 
 pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Connection> {
     let (gui_tx, gui_rx) = async_std::channel::bounded(1);
-    let lock : Arc<AsyncMutex<Sender<Sender<(Device, String)>>>> = Arc::new(AsyncMutex::new(gui_tx));
+    let lock: Arc<AsyncMutex<Sender<Sender<(Device, String)>>>> = Arc::new(AsyncMutex::new(gui_tx));
     start_gui_thread(gui_rx);
     ConnectionBuilder::session()?
         .name(service_name)?
-        .serve_at(
-            path,
-            CredentialManager {
-                app_lock: lock,
-            },
-        )?
+        .serve_at(path, CredentialManager { app_lock: lock })?
         .build()
         .await
 }
@@ -50,8 +45,15 @@ fn start_gui_thread(rx: Receiver<Sender<(Device, String)>>) {
                 let data = Arc::new(Mutex::new(None));
                 let credential_service = CredentialService::new(data.clone());
                 let event_loop = async_std::task::spawn(async move {
-                    let operation = Operation::Create { cred_type: CredentialType::Passkey };
-                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event, tx_update);
+                    let operation = Operation::Create {
+                        cred_type: CredentialType::Passkey,
+                    };
+                    let mut vm = view_model::ViewModel::new(
+                        operation,
+                        credential_service,
+                        rx_event,
+                        tx_update,
+                    );
                     vm.start_event_loop().await;
                     println!("event loop ended?");
                 });
@@ -69,16 +71,13 @@ fn start_gui_thread(rx: Receiver<Sender<(Device, String)>>) {
 fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
     // Prepare i18n
     gettextrs::setlocale(LocaleCategory::LcAll, "");
-    gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR)
-        .expect("Unable to bind the text domain");
-    gettextrs::textdomain(GETTEXT_PACKAGE)
-        .expect("Unable to switch to the text domain");
+    gettextrs::bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR).expect("Unable to bind the text domain");
+    gettextrs::textdomain(GETTEXT_PACKAGE).expect("Unable to switch to the text domain");
 
     if let None = glib::application_name() {
         glib::set_application_name(&gettext("Credential Manager"));
     }
-    let res =
-        gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
+    let res = gio::Resource::load(RESOURCES_FILE).expect("Could not load gresource file");
     gio::resources_register(&res);
 
     let app = ExampleApplication::new(tx_event, rx_update);
@@ -114,7 +113,9 @@ impl CredentialManager {
                     let data_rx = Arc::new(data_rx);
                     let (device, cred_id) = data_rx.recv().await.unwrap();
                     match device.transport {
-                        Transport::Internal => Ok(create_passkey(&origin, passkey_request).await?.into()),
+                        Transport::Internal => {
+                            Ok(create_passkey(&origin, passkey_request).await?.into())
+                        }
                         _ => todo!("Transport {:?} not implemented", device.transport),
                     }
                 }
@@ -125,7 +126,9 @@ impl CredentialManager {
             response
         } else {
             tracing::debug!("Window already open");
-            Err(fdo::Error::ObjectPathInUse("WebAuthn session already open.".into()))
+            Err(fdo::Error::ObjectPathInUse(
+                "WebAuthn session already open.".into(),
+            ))
         }
     }
 }
@@ -157,7 +160,6 @@ async fn create_password(
     .map_err(|_| fdo::Error::Failed("".to_string()))?;
     Ok(CreatePasswordCredentialResponse {})
 }
-
 
 async fn create_passkey(
     origin: &str,
@@ -203,7 +205,6 @@ async fn create_passkey(
     })
 }
 
-
 #[derive(DeserializeDict, Type)]
 #[zvariant(signature = "dict")]
 pub struct CreateCredentialRequest {
@@ -241,7 +242,7 @@ pub struct CreateCredentialResponse {
 #[zvariant(signature = "dict")]
 pub struct CreatePasswordCredentialResponse {}
 
-impl From<CreatePasswordCredentialResponse> for CreateCredentialResponse{
+impl From<CreatePasswordCredentialResponse> for CreateCredentialResponse {
     fn from(response: CreatePasswordCredentialResponse) -> Self {
         CreateCredentialResponse {
             r#type: "password".to_string(),
@@ -257,7 +258,7 @@ pub struct CreatePublicKeyCredentialResponse {
     registration_response_json: String,
 }
 
-impl From<CreatePublicKeyCredentialResponse > for CreateCredentialResponse {
+impl From<CreatePublicKeyCredentialResponse> for CreateCredentialResponse {
     fn from(response: CreatePublicKeyCredentialResponse) -> Self {
         CreateCredentialResponse {
             // TODO: Decide on camelCase or kebab-case for cred types

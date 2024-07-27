@@ -14,7 +14,10 @@ use crate::window::ExampleApplicationWindow;
 mod imp {
     use super::*;
     use glib::{clone, WeakRef};
-    use std::{cell::{OnceCell, RefCell}, time::Duration};
+    use std::{
+        cell::{OnceCell, RefCell},
+        time::Duration,
+    };
 
     #[derive(Debug, Default)]
     pub struct ExampleApplication {

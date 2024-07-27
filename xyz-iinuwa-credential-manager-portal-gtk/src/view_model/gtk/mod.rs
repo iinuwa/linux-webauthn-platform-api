@@ -2,18 +2,18 @@ pub mod credential;
 pub mod device;
 
 use async_std::channel::{Receiver, Sender};
+use glib::clone;
 use gtk::gio;
 use gtk::glib;
-use glib::clone;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use tracing::debug;
 
-use self::device::DeviceObject;
 use self::credential::CredentialObject;
+use self::device::DeviceObject;
 
-use super::{Device, Credential};
 use super::Transport;
+use super::{Credential, Device};
 use super::{ViewEvent, ViewUpdate};
 
 mod imp {
@@ -56,12 +56,12 @@ mod imp {
     #[glib::object_subclass]
     impl ObjectSubclass for ViewModel {
         const NAME: &'static str = "CredentialManagerViewModel";
-        type Type =super::ViewModel;
+        type Type = super::ViewModel;
     }
 
     // Trait shared by all GObjects
     #[glib::derived_properties]
-    impl ObjectImpl for ViewModel { }
+    impl ObjectImpl for ViewModel {}
 }
 
 glib::wrapper! {
@@ -111,10 +111,13 @@ impl ViewModel {
     }
 
     fn update_devices(&self, devices: &[Device]) {
-        let vec: Vec<DeviceObject> = devices.iter().map(|d| {
-            let device_object: DeviceObject = d.into();
-            device_object
-        }).collect();
+        let vec: Vec<DeviceObject> = devices
+            .iter()
+            .map(|d| {
+                let device_object: DeviceObject = d.into();
+                device_object
+            })
+            .collect();
         let model = gio::ListStore::new::<DeviceObject>();
         model.extend_from_slice(&vec);
         let tx = self.get_sender();
@@ -141,16 +144,13 @@ impl ViewModel {
             b.append(&icon);
             b.append(&label);
 
-            let button = gtk::Button::builder()
-                .name(device.id())
-                .child(&b)
-                .build();
+            let button = gtk::Button::builder().name(device.id()).child(&b).build();
             let tx = tx.clone();
             button.connect_clicked(move |button| {
                 let id = button.widget_name().to_string();
                 let tx = tx.clone();
                 glib::spawn_future_local(async move {
-                tx.send(ViewEvent::DeviceSelected(id)).await.unwrap();
+                    tx.send(ViewEvent::DeviceSelected(id)).await.unwrap();
                 });
             });
             button.into()
@@ -159,10 +159,13 @@ impl ViewModel {
     }
 
     fn update_credentials(&self, credentials: &[Credential]) {
-        let vec: Vec<CredentialObject> = credentials.iter().map(|d| {
-            let credential_object: CredentialObject = d.into();
-            credential_object
-        }).collect();
+        let vec: Vec<CredentialObject> = credentials
+            .iter()
+            .map(|d| {
+                let credential_object: CredentialObject = d.into();
+                credential_object
+            })
+            .collect();
         let model = gio::ListStore::new::<CredentialObject>();
         model.extend_from_slice(&vec);
         let tx = self.get_sender();
@@ -188,7 +191,7 @@ impl ViewModel {
                 let id = button.widget_name().to_string();
                 let tx = tx.clone();
                 glib::spawn_future_local(async move {
-                tx.send(ViewEvent::CredentialSelected(id)).await.unwrap();
+                    tx.send(ViewEvent::CredentialSelected(id)).await.unwrap();
                 });
             });
             button.into()
@@ -198,13 +201,11 @@ impl ViewModel {
 
     fn select_device(&self, device: &Device) {
         match device.transport {
-            Transport::Usb => {
-
-            },
-            Transport::Internal => {
-
-            },
-            _ => { todo!(); }
+            Transport::Usb => {}
+            Transport::Internal => {}
+            _ => {
+                todo!();
+            }
         }
         self.set_selected_device(&device.into());
         self.set_selected_credential("");

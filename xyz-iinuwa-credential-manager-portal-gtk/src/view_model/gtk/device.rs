@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
-use gtk::glib;
 use glib::Object;
+use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
@@ -40,7 +40,8 @@ glib::wrapper! {
 }
 
 impl DeviceObject {
-    pub fn new(id: &str, transport: &Transport, name: &str) -> Self {//, label: &str, icon_name: &str) -> Self {
+    pub fn new(id: &str, transport: &Transport, name: &str) -> Self {
+        //, label: &str, icon_name: &str) -> Self {
         let transport = transport.as_str();
         Object::builder()
             .property("id", id)
@@ -80,6 +81,9 @@ impl TryFrom<DeviceObject> for crate::view_model::Device {
 
     fn try_from(value: DeviceObject) -> Result<Self, Self::Error> {
         let transport: Transport = value.transport().try_into()?;
-        Ok(Self { id: value.id(), transport })
+        Ok(Self {
+            id: value.id(),
+            transport,
+        })
     }
 }
