@@ -1,10 +1,8 @@
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::thread::JoinHandle;
 
-use async_std::channel::Receiver;
-use async_std::channel::Sender;
+use async_std::channel::{Receiver, Sender};
+use async_std::sync::Mutex as AsyncMutex;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use gettextrs::{gettext, LocaleCategory};
@@ -27,7 +25,9 @@ use crate::webauthn;
 // use crate::webauthn;
 
 pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Connection> {
-    let lock = Arc::new(async_std::sync::Mutex::new(()));
+    let (gui_tx, gui_rx) = async_std::channel::bounded(1);
+    let lock : Arc<AsyncMutex<Sender<Sender<(Device, String)>>>> = Arc::new(AsyncMutex::new(gui_tx));
+    start_gui_thread(gui_rx);
     ConnectionBuilder::session()?
         .name(service_name)?
         .serve_at(
@@ -38,6 +38,32 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
         )?
         .build()
         .await
+}
+
+fn start_gui_thread(rx: Receiver<Sender<(Device, String)>>) {
+    thread::Builder::new()
+        .name("gui".into())
+        .spawn(move || {
+            while let Ok(response_tx) = rx.recv_blocking() {
+                let (tx_update, rx_update) = async_std::channel::unbounded::<ViewUpdate>();
+                let (tx_event, rx_event) = async_std::channel::unbounded::<ViewEvent>();
+                let data = Arc::new(Mutex::new(None));
+                let credential_service = CredentialService::new(data.clone());
+                let event_loop = async_std::task::spawn(async move {
+                    let operation = Operation::Create { cred_type: CredentialType::Passkey };
+                    let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event, tx_update);
+                    vm.start_event_loop().await;
+                    println!("event loop ended?");
+                });
+                start_gtk_app(tx_event, rx_update);
+
+                async_std::task::block_on(event_loop.cancel());
+                let lock = data.lock().unwrap();
+                let response = lock.as_ref().unwrap().clone();
+                response_tx.send_blocking(response).unwrap();
+            }
+        })
+        .unwrap();
 }
 
 fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
@@ -60,17 +86,16 @@ fn start_gtk_app(tx_event: Sender<ViewEvent>, rx_update: Receiver<ViewUpdate>) {
 }
 
 struct CredentialManager {
-    app_lock: Arc<async_std::sync::Mutex<()>>,
+    app_lock: Arc<AsyncMutex<Sender<Sender<(Device, String)>>>>,
 }
 
 #[interface(name = "xyz.iinuwa.credentials.CredentialManagerUi1")]
 impl CredentialManager {
-
     async fn create_credential(
         &self,
         request: CreateCredentialRequest,
     ) -> fdo::Result<CreateCredentialResponse> {
-        if self.app_lock.try_lock().is_some() {
+        if let Some(tx) = self.app_lock.try_lock() {
             let origin = request
                 .origin
                 .unwrap_or("xyz.iinuwa.credentials.CredentialManager:local".to_string());
@@ -84,7 +109,10 @@ impl CredentialManager {
                     Ok(password_response.into())
                 }
                 ("publicKey", _, Some(passkey_request)) => {
-                    let (device, cred_id) = async_std::task::spawn_blocking(|| start_thread().join()).await.unwrap();
+                    let (data_tx, data_rx) = async_std::channel::bounded(1);
+                    tx.send(data_tx).await.unwrap();
+                    let data_rx = Arc::new(data_rx);
+                    let (device, cred_id) = data_rx.recv().await.unwrap();
                     match device.transport {
                         Transport::Internal => Ok(create_passkey(&origin, passkey_request).await?.into()),
                         _ => todo!("Transport {:?} not implemented", device.transport),
@@ -100,33 +128,6 @@ impl CredentialManager {
             Err(fdo::Error::ObjectPathInUse("WebAuthn session already open.".into()))
         }
     }
-}
-
-fn start_thread() -> JoinHandle<(Device, String)> {
-    thread::Builder::new()
-        .name("gui".into())
-        .spawn(move || {
-            let (tx_update, rx_update) = async_std::channel::unbounded::<ViewUpdate>();
-            let (tx_event, rx_event) = async_std::channel::unbounded::<ViewEvent>();
-            let data = Arc::new(Mutex::new(None));
-            let credential_service = CredentialService::new(data.clone());
-            let event_loop = async_std::task::spawn(async move {
-                let operation = Operation::Create { cred_type: CredentialType::Passkey };
-                let mut vm = view_model::ViewModel::new(operation, credential_service, rx_event, tx_update);
-                vm.start_event_loop().await;
-                println!("event loop ended?");
-            });
-            start_gtk_app(tx_event, rx_update);
-            // credential_service.get_completed_credential().unwrap();
-
-            async_std::task::block_on(event_loop.cancel());
-            let response = data.lock().unwrap();
-            // tx_completed.send(response.as_ref().unwrap().clone()).unwrap();
-            // let mut running = lock2.lock().unwrap();
-            // *running = false;
-            return response.as_ref().unwrap().clone();
-        })
-        .unwrap()
 }
 
 async fn create_password(
