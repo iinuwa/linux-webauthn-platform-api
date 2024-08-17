@@ -1,21 +1,21 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use base64::{self, engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use cose::{CoseKeyAlgorithmIdentifier, CoseKeyType, encode_public_key};
 use openssl::{pkey::PKey, rsa::Rsa};
 use ring::{
     digest::{self, digest},
     rand::SystemRandom,
     signature::{
-        EcdsaKeyPair, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm, Ed25519KeyPair, KeyPair,
-        RsaKeyPair, VerificationAlgorithm, ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING,
-        RSA_PKCS1_SHA256,
+        EcdsaKeyPair, EcdsaSigningAlgorithm, Ed25519KeyPair, RsaKeyPair,
+        ECDSA_P256_SHA256_ASN1_SIGNING, RSA_PKCS1_SHA256,
     },
 };
 use serde::Deserialize;
 use serde_json::json;
 use zbus::zvariant::{DeserializeDict, Type};
 
-use crate::cbor::CborWriter;
+use crate::{cbor::CborWriter, store};
 
 static P256: &EcdsaSigningAlgorithm = &ECDSA_P256_SHA256_ASN1_SIGNING;
 // static RNG: &Box<dyn SecureRandom> = &Box::new(SystemRandom::new());
@@ -133,10 +133,10 @@ pub(crate) fn make_credential(
 ) -> Result<(CreatePublicKeyCredentialResponse, CredentialSource), Error> {
     // Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
     // TODO:
-    let supported_algorithms: [i64; 3] = [
-        -8,   // Ed25519
-        -7,   // P-256
-        -257, // RSA-PKCS1-SHA256
+    let supported_algorithms: [CoseKeyType; 3] = [
+        CoseKeyType::ES256_P256,
+        CoseKeyType::EdDSA_Ed25519,
+        CoseKeyType::RS256,
     ];
 
     // When this operation is invoked, the authenticator MUST perform the following procedure:
@@ -159,7 +159,12 @@ pub(crate) fn make_credential(
     // Check if at least one of the specified combinations of PublicKeyCredentialType and cryptographic parameters in credTypesAndPubKeyAlgs is supported. If not, return an error code equivalent to "NotSupportedError" and terminate the operation.
     let cred_pub_key_parameters = match cred_pub_key_algs
         .iter()
-        .find(|p| p.cred_type == "public-key" && supported_algorithms.contains(&p.alg))
+        .filter(|p| p.cred_type == "public-key")
+        .find(|p| if let Ok(ref key_type) = (*p).try_into() {
+            supported_algorithms.contains(key_type)
+         } else {
+            false
+         })
     {
         Some(cred_pub_key_parameters) => cred_pub_key_parameters,
         None => return Err(Error::NotSupported),
@@ -215,7 +220,8 @@ pub(crate) fn make_credential(
 
     // Once the authorization gesture has been completed and user consent has been obtained, generate a new credential object:
     // Let (publicKey, privateKey) be a new pair of cryptographic keys using the combination of PublicKeyCredentialType and cryptographic parameters represented by the first item in credTypesAndPubKeyAlgs that is supported by this authenticator.
-    let key_pair = create_key_pair(cred_pub_key_parameters.alg)?;
+    let key_type = cred_pub_key_parameters.try_into().map_err(|_| Error::Unknown)?;
+    let key_pair = create_key_pair(key_type)?;
     // Let userHandle be userEntity.id.
     let user_handle = URL_SAFE_NO_PAD
         .decode(user_entity.id.clone())
@@ -239,6 +245,7 @@ pub(crate) fn make_credential(
         // privateKey
         // privateKey
         private_key: key_pair.clone(),
+        key_parameters: cred_pub_key_parameters.clone(),
         // rpId
         // rpEntity.id
         rp_id: rp_entity.id,
@@ -280,7 +287,7 @@ pub(crate) fn make_credential(
 
     // Let attestedCredentialData be the attested credential data byte array including the credentialId and publicKey.
     let aaguid = vec![0_u8; 16];
-    let public_key = cose_encode_public_key(cred_pub_key_parameters, &key_pair)?;
+    let public_key = encode_public_key(key_type, &key_pair).map_err(|_| Error::Unknown)?;
     let attested_credential_data =
         create_attested_credential_data(&credential_id, &public_key, &aaguid)?;
 
@@ -288,7 +295,8 @@ pub(crate) fn make_credential(
     let authenticator_data = create_authenticator_data(
         &credential_source,
         signature_counter,
-        &attested_credential_data,
+        Some(&attested_credential_data),
+        None,
     );
 
     // Create an attestation object for the new credential using the procedure specified in § 6.5.4 Generating an Attestation Object, using an authenticator-chosen attestation statement format, authenticatorData, and hash, as well as taking into account the value of enterpriseAttestationPossible. For more details on attestation, see § 6.5 Attestation.
@@ -297,10 +305,10 @@ pub(crate) fn make_credential(
         &authenticator_data,
         &client_data_hash,
         &key_pair,
-        cred_pub_key_parameters,
+        &key_type,
     )?;
     let attestation_object = create_attestation_object(
-        cred_pub_key_parameters.alg,
+        key_type.algorithm(),
         &authenticator_data,
         &signature,
         enterprise_attestation_possible,
@@ -318,12 +326,167 @@ pub(crate) fn make_credential(
     Ok((response, credential_source))
 }
 
-fn create_key_pair(alg: i64) -> Result<Vec<u8>, Error> {
+fn get_credential(
+
+    rp_entity: RelyingParty,
+
+    challenge: String,
+    origin: &str,
+    cross_origin: bool,
+    top_origin: Option<String>,
+    allow_credential_descriptor_list: Option<Vec<CredentialDescriptor>>,
+    require_user_presence: bool,
+    require_user_verification: bool,
+    enterprise_attestation_possible: bool,
+    attestation_formats: Vec<AttestationStatementFormat>,
+    stored_credentials: HashMap<Vec<u8>, CredentialSource>,
+
+    extensions: Option<()>,
+) -> Result<GetPublicKeyCredentialResponse, Error> {
+    // Note: Before performing this operation, all other operations in progress in the authenticator session MUST be aborted by running the authenticatorCancel operation.
+
+    // When this method is invoked, the authenticator MUST perform the following procedure:
+
+    // Check if all the supplied parameters are syntactically well-formed and of the correct length. If not, return an error code equivalent to "UnknownError" and terminate the operation.
+    let cross_origin_str = if cross_origin { "true" } else { "false" };
+    let client_data_json = format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{challenge}\",\"origin\":\"{origin}\",\"crossOrigin\":{cross_origin_str}}}");
+    let client_data_hash = digest::digest(&digest::SHA256, client_data_json.as_bytes())
+        .as_ref()
+        .to_owned();
+    if client_data_hash.len() != 32 {
+        return Err(Error::Unknown);
+    }
+
+    // Let credentialOptions be a new empty set of public key credential sources.
+    // If allowCredentialDescriptorList was supplied, then for each descriptor of allowCredentialDescriptorList:
+    let credential_options: Vec<&CredentialSource> = if let Some(ref allowed_credentials) = allow_credential_descriptor_list {
+        // Let credSource be the result of looking up descriptor.id in this authenticator.
+        // If credSource is not null, append it to credentialOptions.
+        allowed_credentials.iter()
+            .filter_map(|cred| stored_credentials.get(&cred.id))
+            // Remove any items from credentialOptions whose rpId is not equal to rpId.
+            .filter(|cred_source| cred_source.rp_id == rp_entity.id)
+            .collect()
+    }
+    else {
+        // Otherwise (allowCredentialDescriptorList was not supplied), for each key → credSource of this authenticator’s credentials map, append credSource to credentialOptions.
+        stored_credentials
+            .values()
+            // Remove any items from credentialOptions whose rpId is not equal to rpId.
+            .filter(|cred_source| cred_source.rp_id == rp_entity.id)
+            .collect()
+    };
+
+
+    // If credentialOptions is now empty, return an error code equivalent to "NotAllowedError" and terminate the operation.
+    if credential_options.is_empty() {
+        return Err(Error::NotAllowed);
+    }
+    // Prompt the user to select a public key credential source selectedCredential from credentialOptions. Collect an authorization gesture confirming user consent for using selectedCredential. The prompt for the authorization gesture may be shown by the authenticator if it has its own output capability, or by the user agent otherwise.
+        // TODO, already done? Move up to D-Bus call
+        // If requireUserVerification is true, the authorization gesture MUST include user verification.
+        // If requireUserPresence is true, the authorization gesture MUST include a test of user presence.
+        // If the user does not consent, return an error code equivalent to "NotAllowedError" and terminate the operation.
+    // TODO: pass selected_credential to this method
+    let selected_credential = credential_options[0];
+    // Let processedExtensions be the result of authenticator extension processing for each supported extension identifier → authenticator extension input in extensions.
+    if let Some(extensions) = extensions {
+        // TODO: support extensions
+        process_authenticator_extensions(extensions)
+            .expect("Processing extensions not supported yet.");
+    }
+
+    // Increment the credential associated signature counter or the global signature counter value, depending on which approach is implemented by the authenticator, by some positive value. If the authenticator does not implement a signature counter, let the signature counter value remain constant at zero.
+    let signature_counter = 0;
+    /*  TODO
+    let counter_type = WebAuthnDeviceCounterType::PerCredential;
+    let signature_counter: u32 = match counter_type {
+        // is a U2F device
+        // let the signature counter value for the new credential be zero. (U2F devices may support signature counters but do not return a counter when making a credential. See [FIDO-U2F-Message-Formats].)
+        WebAuthnDeviceCounterType::U2F => 0,
+        // supports a global signature counter
+        // Use the global signature counter's actual value when generating authenticator data.
+        WebAuthnDeviceCounterType::Global => todo!(), // authenticator.sign_count
+        // supports a per credential signature counter
+
+        // allocate the counter, associate it with the new credential, and initialize the counter value as zero.
+        WebAuthnDeviceCounterType::PerCredential => cred_source.,
+        // does not support a signature counter
+
+        // let the signature counter value for the new credential be constant at zero.
+        WebAuthnDeviceCounterType::Unsupported => 0,
+    };
+    */
+
+    // If attestationFormats:
+    // is not empty
+    //     let attestationFormat be the first supported attestation statement format from attestationFormats, taking into account enterpriseAttestationPossible. If none are supported, fallthrough to:
+    // is empty
+    //     let attestationFormat be the attestation statement format most preferred by this authenticator. If it does not support attestation during assertion then let this be none.
+    let supported_formats = [AttestationStatementFormat::Packed];
+    let preferred_format = AttestationStatementFormat::None;
+    let attestation_format = attestation_formats.iter().find(|f| supported_formats.contains(f)).unwrap_or(&preferred_format);
+
+    let key_type = (&selected_credential.key_parameters).try_into().map_err(|_| Error::Unknown)?;
+    let public_key = encode_public_key(key_type, &selected_credential.private_key).map_err(|_| Error::Unknown)?;
+
+    // TODO: Assign AAGUID?
+    let aaguid = vec![0_u8; 16];
+    let attested_credential_data = if *attestation_format != AttestationStatementFormat::None { create_attested_credential_data(&selected_credential.id, &public_key, &aaguid).ok() } else { None };
+    // Let authenticatorData be the byte array specified in § 6.1 Authenticator Data including processedExtensions, if any, as the extensions and excluding attestedCredentialData. This authenticatorData MUST include attested credential data if, and only if, attestationFormat is not none.
+    let authenticator_data = create_authenticator_data(selected_credential, signature_counter, attested_credential_data.as_deref(), None);
+    // Let signature be the assertion signature of the concatenation authenticatorData || hash using the privateKey of selectedCredential as shown in Figure , below. A simple, undelimited concatenation is safe to use here because the authenticator data describes its own length. The hash of the serialized client data (which potentially has a variable length) is always the last element.
+    let signature = sign_attestation(
+        &authenticator_data,
+        &client_data_hash,
+        &selected_credential.private_key,
+        &key_type,
+    )?;
+
+    // The attestationFormat is not none then create an attestation object for the new credential using the procedure specified in § 6.5.5 Generating an Attestation Object, the attestation statement format attestationFormat, and the values authenticatorData and hash, as well as taking into account the value of enterpriseAttestationPossible. For more details on attestation, see § 6.5 Attestation.
+    let attestation_object = if *attestation_format != AttestationStatementFormat::None {
+        Some(create_attestation_object(key_type.algorithm(), &authenticator_data, &signature, enterprise_attestation_possible)?)
+    } else {
+        None
+    };
+
+    // If any error occurred then return an error code equivalent to "UnknownError" and terminate the operation.
+    // Return to the user agent:
+    let response = GetPublicKeyCredentialResponse {
+        cred_type: "public-key".to_string(),
+        client_data_json,
+
+        // selectedCredential.id, if either a list of credentials (i.e., allowCredentialDescriptorList) of length 2 or greater was supplied by the client, or no such list was supplied.
+        // Note: If, within allowCredentialDescriptorList, the client supplied exactly one credential and it was successfully employed, then its credential ID is not returned since the client already knows it. This saves transmitting these bytes over what may be a constrained connection in what is likely a common case.
+        raw_id: if allow_credential_descriptor_list.map_or(true,  |l| l.len() > 1) {
+            Some(selected_credential.id.clone())
+        } else {
+            None
+        },
+
+        // authenticatorData
+        authenticator_data,
+        // signature
+        signature,
+
+
+        // The attestation object, if an attestation object was created for this assertion.
+        attestation_object: attestation_object,
+
+        // selectedCredential.userHandle
+        // Note: In cases where allowCredentialDescriptorList was supplied the returned userHandle value may be null, see: userHandleResult.
+        user_handle: selected_credential.user_handle.clone(),
+    };
+    Ok(response)
+    // If the authenticator cannot find any credential corresponding to the specified Relying Party that matches the specified criteria, it terminates the operation and returns an error.
+}
+
+fn create_key_pair(parameters: CoseKeyType) -> Result<Vec<u8>, Error> {
     let rng = &SystemRandom::new();
-    let key_pair = match alg {
-        -7 => EcdsaKeyPair::generate_pkcs8(P256, rng).map(|d| d.as_ref().to_vec()),
-        -8 => Ed25519KeyPair::generate_pkcs8(rng).map(|d| d.as_ref().to_vec()),
-        -257 => {
+    let key_pair = match parameters {
+        CoseKeyType::ES256_P256 => EcdsaKeyPair::generate_pkcs8(P256, rng).map(|d| d.as_ref().to_vec()),
+        CoseKeyType::EdDSA_Ed25519 => Ed25519KeyPair::generate_pkcs8(rng).map(|d| d.as_ref().to_vec()),
+        CoseKeyType::RS256 => {
             let rsa_key = Rsa::generate(2048).unwrap();
             let private_key = PKey::from_rsa(rsa_key).unwrap();
             let pkcs8 = private_key.private_key_to_pkcs8().unwrap();
@@ -362,20 +525,20 @@ fn sign_attestation(
     authenticator_data: &[u8],
     client_data_hash: &[u8],
     key_pair: &[u8],
-    cred_pub_key_parameters: &PublicKeyCredentialParameters,
+    key_type: &CoseKeyType,
 ) -> Result<Vec<u8>, Error> {
     let signed_data: Vec<u8> = [authenticator_data, client_data_hash].concat();
     let rng = &SystemRandom::new();
-    match cred_pub_key_parameters.alg {
-        -7 => {
-            let ecdsa = EcdsaKeyPair::from_pkcs8(P256, key_pair, &SystemRandom::new()).unwrap();
+    match key_type {
+        CoseKeyType::ES256_P256 => {
+            let ecdsa = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, key_pair, &SystemRandom::new()).unwrap();
             Ok(ecdsa.sign(rng, &signed_data).unwrap().as_ref().to_vec())
         }
-        -8 => {
+        CoseKeyType::EdDSA_Ed25519 => {
             let eddsa = Ed25519KeyPair::from_pkcs8(key_pair).unwrap();
             Ok(eddsa.sign(&signed_data).as_ref().to_vec())
         }
-        -257 => {
+        CoseKeyType::RS256 => {
             let rsa = RsaKeyPair::from_pkcs8(key_pair).unwrap();
             let mut signature = vec![0; rsa.public_modulus_len()];
             let _ = rsa.sign(&RSA_PKCS1_SHA256, rng, &signed_data, &mut signature);
@@ -405,19 +568,33 @@ fn create_attested_credential_data(
 fn create_authenticator_data(
     credential_source: &CredentialSource,
     signature_counter: u32,
-    attested_credential_data: &[u8],
+    attested_credential_data: Option<&[u8]>,
+    processed_extensions: Option<()>,
 ) -> Vec<u8> {
     let mut authenticator_data: Vec<u8> = Vec::new();
     let rp_id_hash = digest(&digest::SHA256, credential_source.rp_id.as_bytes());
     authenticator_data.extend(rp_id_hash.as_ref());
-    authenticator_data.push(0b0100_0101); // UP, UV, AT
+
+    if attested_credential_data.is_some() {
+        authenticator_data.push(0b0100_0101); // UP, UV, AT
+    } else {
+        authenticator_data.push(0b0000_0101); // UP, UV
+    }
+
     authenticator_data.extend(signature_counter.to_be_bytes());
-    authenticator_data.extend(attested_credential_data);
-    // TODO: authenticator_data.append(processed_extensions.to_bytes());
+
+    if let Some(attested_credential_data) = attested_credential_data {
+        authenticator_data.extend(attested_credential_data);
+    }
+
+    if processed_extensions.is_some() {
+        todo!("Implement processed extensions");
+        // TODO: authenticator_data.append(processed_extensions.to_bytes());
+    }
     authenticator_data
 }
 fn create_attestation_object(
-    algorithm: i64,
+    algorithm: CoseKeyAlgorithmIdentifier,
     authenticator_data: &[u8],
     signature: &[u8],
     _enterprise_attestation_possible: bool,
@@ -442,71 +619,6 @@ fn create_attestation_object(
     Ok(attestation_object)
 }
 
-fn cose_encode_public_key(
-    parameters: &PublicKeyCredentialParameters,
-    pkcs8_key: &[u8],
-) -> Result<Vec<u8>, Error> {
-    match parameters.alg {
-        -7 => {
-            let key_pair = EcdsaKeyPair::from_pkcs8(
-                &ECDSA_P256_SHA256_ASN1_SIGNING,
-                pkcs8_key,
-                &SystemRandom::new(),
-            )
-            .unwrap();
-            let public_key = key_pair.public_key().as_ref();
-            // ring outputs public keys with uncompressed 32-byte x and y coordinates
-            if public_key.len() != 65 || public_key[0] != 0x04 {
-                return Err(Error::Unknown);
-            }
-            let (x, y) = public_key[1..].split_at(32);
-            let mut cose_key: Vec<u8> = Vec::new();
-            cose_key.push(0b101_00101); // map with 5 items
-            cose_key.extend([0b000_00001, 0b000_00010]); // kty (1): EC2 (2)
-            cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): ECDSA-SHA256 (-7)
-            cose_key.extend([0b001_00000, 0b000_00001]); // crv (-1): P256 (1)
-            cose_key.extend([0b001_00001, 0b010_11000, 0b0010_0000]); // x (-2): <32-byte string>
-            cose_key.extend(x);
-            cose_key.extend([0b001_00010, 0b010_11000, 0b0010_0000]); // y (-3): <32-byte string>
-            cose_key.extend(y);
-            Ok(cose_key)
-        }
-        -8 => {
-            // TODO: Check this
-            let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::Unknown)?;
-            let public_key = key_pair.public_key().as_ref();
-            let mut cose_key: Vec<u8> = Vec::new();
-            cose_key.push(0b101_00100); // map with 4 items
-            cose_key.extend([0b000_00001, 0b000_00001]); // kty (1): OKP (1)
-            cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): EdDSA (-8)
-            cose_key.extend([0b001_00000, 0b000_00110]); // crv (-1): ED25519 (6)
-            cose_key.extend([0b001_00001, 0b010_11000, 0b0010_0000]); // x (-2): <32-byte string>
-            cose_key.extend(public_key);
-            Ok(cose_key)
-        }
-        -257 => {
-            let key_pair = RsaKeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::Unknown)?;
-            let public_key = key_pair.public_key().as_ref();
-            // TODO: This is ASN.1 with DER encoding. We could parse this to extract
-            // the modulus and exponent properly, but the key length will
-            // probably not change, so we're winging it
-            // https://stackoverflow.com/a/12750816/11931787
-            let n = &public_key[9..(9 + 256)];
-            let e = &public_key[public_key.len() - 3..];
-            debug_assert_eq!(n.len(), key_pair.public_modulus_len());
-            let mut cose_key: Vec<u8> = Vec::new();
-            cose_key.push(0b101_00100); // map with 4 items
-            cose_key.extend([0b000_00001, 0b000_00010]); // kty (1): RSA (3)
-            cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): RSASSA-PKCS1-v1_5 using SHA-256 (-257)
-            cose_key.extend([0b001_00000, 0b010_11001, 0b0000_0001, 0b0000_0000]); // n (-1): <256-byte string>
-            cose_key.extend(n);
-            cose_key.extend([0b001_00001, 0b010_00011]); // e (-2): <3-byte string>
-            cose_key.extend(e);
-            Ok(cose_key)
-        }
-        _ => todo!(),
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -520,10 +632,12 @@ mod test {
         },
     };
 
+    use crate::webauthn::cose::{CoseKeyAlgorithmIdentifier, CoseKeyParameters, CoseKeyType};
+
     use super::{
-        cose_encode_public_key, create_attestation_object, create_attested_credential_data,
+        cose::encode_public_key, create_attestation_object, create_attested_credential_data,
         create_authenticator_data, sign_attestation, CredentialSource,
-        PublicKeyCredentialParameters, PublicKeyCredentialType, P256,
+        PublicKeyCredentialParameters, PublicKeyCredentialType,
     };
 
     #[test]
@@ -540,12 +654,13 @@ mod test {
     #[test]
     fn test_attestation() {
         let key_file = std::fs::read("private-key1.pk8").unwrap();
-        let key_pair = EcdsaKeyPair::from_pkcs8(P256, &key_file, &SystemRandom::new()).unwrap();
+        // let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &key_file, &SystemRandom::new()).unwrap();
         let key_parameters = PublicKeyCredentialParameters {
             alg: -7,
             cred_type: "public-key".to_string(),
         };
-        let public_key = cose_encode_public_key(&key_parameters, &key_file).unwrap();
+        let key_type = (&key_parameters).try_into().unwrap();
+        let public_key = encode_public_key(key_type, &key_file).unwrap();
         let signature_counter = 1u32;
         let credential_id = [
             0x92, 0x11, 0xb7, 0x6d, 0x8b, 0x19, 0xf9, 0x50, 0x6c, 0x2d, 0x75, 0x2f, 0x09, 0xc4,
@@ -566,6 +681,7 @@ mod test {
             cred_type: PublicKeyCredentialType::PublicKey,
             id: credential_id,
             private_key: key_file.clone(),
+            key_parameters: PublicKeyCredentialParameters::new(key_type.algorithm().into()),
             rp_id: "webauthn.io".to_string(),
             user_handle: Some(user_handle),
             other_ui: None,
@@ -574,7 +690,8 @@ mod test {
         let authenticator_data = create_authenticator_data(
             &credential_source,
             signature_counter,
-            &attested_credential_data,
+            Some(&attested_credential_data),
+            None,
         );
         let client_data_encoded = "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiWWlReFY0VWhjZk9pUmZBdkF4bWpEakdhaUVXbkYtZ0ZFcWxndmdEaWsyakZiSGhoaVlxUGJqc0F5Q0FrbDlMUGQwRGRQaHNNb2luY0cxckV5cFlXUVEiLCJvcmlnaW4iOiJodHRwczovL3dlYmF1dGhuLmlvIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ";
         let client_data = URL_SAFE_NO_PAD.decode(client_data_encoded).unwrap();
@@ -583,11 +700,11 @@ mod test {
             &authenticator_data,
             &client_data_hash,
             &key_file,
-            &key_parameters,
+            &key_type,
         )
         .unwrap();
         let attestation_object =
-            create_attestation_object(key_parameters.alg, &authenticator_data, &signature, false)
+            create_attestation_object(key_type.algorithm(), &authenticator_data, &signature, false)
                 .unwrap();
         let expected = std::fs::read("output.bin").unwrap();
         assert_eq!(expected, attestation_object);
@@ -690,12 +807,37 @@ pub(crate) struct AuthenticatorSelectionCriteria {
     pub user_verification: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 /// https://www.w3.org/TR/webauthn-3/#dictdef-publickeycredentialparameters
-pub(crate) struct PublicKeyCredentialParameters {
+struct PublicKeyCredentialParameters {
     #[serde(rename = "type")]
     pub cred_type: String,
     pub alg: i64,
+}
+
+impl PublicKeyCredentialParameters {
+    fn new(alg: i64) -> Self {
+        Self { cred_type: "public-key".to_string(), alg }
+    }
+}
+
+impl TryFrom<&PublicKeyCredentialParameters> for CoseKeyType {
+    type Error = String;
+    fn try_from(value: &PublicKeyCredentialParameters) -> Result<Self, Self::Error> {
+        match value.alg {
+            -7 => Ok(CoseKeyType::ES256_P256),
+            -8 => Ok(CoseKeyType::EdDSA_Ed25519),
+            -257 => Ok(CoseKeyType::RS256),
+            _ => Err("Invalid or unsupported algorithm specified".to_owned()),
+        }
+    }
+}
+
+impl TryFrom<PublicKeyCredentialParameters> for CoseKeyType {
+    type Error = String;
+    fn try_from(value: PublicKeyCredentialParameters) -> Result<Self, Self::Error> {
+        CoseKeyType::try_from(&value)
+    }
 }
 
 #[derive(Clone)]
@@ -708,6 +850,8 @@ pub struct CredentialSource {
 
     /// The credential private key
     pub private_key: Vec<u8>,
+
+    pub key_parameters: PublicKeyCredentialParameters,
 
     /// The Relying Party Identifier, for the Relying Party this public key
     /// credential source is scoped to.
@@ -747,6 +891,7 @@ enum WebAuthnDeviceCounterType {
     Unsupported,
 }
 
+#[derive(PartialEq)]
 enum AttestationStatementFormat {
     None,
     Packed,
@@ -755,7 +900,7 @@ enum AttestationStatementFormat {
 pub struct CreatePublicKeyCredentialResponse {
     cred_type: String,
 
-    /// Raw bytes of credential ID
+    /// Raw bytes of credential ID.
     raw_id: Vec<u8>,
 
     response: AttestationResponse,
@@ -763,6 +908,7 @@ pub struct CreatePublicKeyCredentialResponse {
     /// JSON string of extension output
     extensions: Option<String>,
 }
+
 
 /// Returned from a creation of a new public key credential.
 pub struct AttestationResponse {
@@ -835,5 +981,207 @@ impl CreatePublicKeyCredentialResponse {
                 .insert("clientExtensionResults".to_string(), extension_value);
         }
         output.to_string()
+    }
+}
+
+pub struct GetPublicKeyCredentialResponse {
+    cred_type: String,
+
+    /// clientDataJSON.
+    client_data_json: String,
+
+    /// Raw bytes of credential ID. Not returned if only one descriptor was
+    /// passed in the allow credentials list.
+    raw_id: Option<Vec<u8>>,
+
+    /// Encodes contextual bindings made by the authenticator. These bindings
+    /// are controlled by the authenticator itself.
+    authenticator_data: Vec<u8>,
+
+    signature: Vec<u8>,
+
+    /// Bytes containing authenticator data and an attestation statement.
+    attestation_object: Option<Vec<u8>>,
+
+    /// The user handle associated when this public key credential source was
+    /// created. This item is nullable, however user handle MUST always be
+    /// populated for discoverable credentials.
+    user_handle: Option<Vec<u8>>,
+}
+
+mod cose {
+    use ring::{
+        agreement::PublicKey, digest::{self, digest}, rand::SystemRandom, signature::{
+            EcdsaKeyPair, EcdsaSigningAlgorithm, EcdsaVerificationAlgorithm, Ed25519KeyPair, KeyPair,
+            RsaKeyPair, VerificationAlgorithm, ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING,
+            RSA_PKCS1_SHA256,
+        }
+    };
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    #[repr(i64)]
+    pub(super) enum CoseKeyType {
+        ES256_P256,
+        EdDSA_Ed25519,
+        RS256,
+    }
+
+    impl CoseKeyType {
+        pub fn algorithm(&self) -> CoseKeyAlgorithmIdentifier {
+            let params: CoseKeyParameters = (*self).into();
+            params.algorithm()
+        }
+    }
+
+    impl CoseKeyType {
+        pub fn curve(&self) -> Option<CoseEllipticCurveIdentifier> {
+            let params: CoseKeyParameters = (*self).into();
+            params.curve()
+        }
+    }
+
+    pub(super) struct CoseKeyParameters {
+        alg: CoseKeyAlgorithmIdentifier,
+        crv: Option<CoseEllipticCurveIdentifier>,
+    }
+
+    impl CoseKeyParameters {
+        pub fn algorithm(&self) -> CoseKeyAlgorithmIdentifier {
+            self.alg
+        }
+
+        pub fn curve(&self) -> Option<CoseEllipticCurveIdentifier> {
+            self.crv
+        }
+    }
+
+    impl From<CoseKeyType> for CoseKeyParameters {
+        fn from(value: CoseKeyType) -> Self {
+            match value {
+                CoseKeyType::ES256_P256 => CoseKeyParameters { alg: CoseKeyAlgorithmIdentifier::ES256, crv: Some(CoseEllipticCurveIdentifier::P256) },
+                CoseKeyType::EdDSA_Ed25519 => CoseKeyParameters { alg: CoseKeyAlgorithmIdentifier::EdDSA, crv: Some(CoseEllipticCurveIdentifier::Ed25519) },
+                CoseKeyType::RS256 => CoseKeyParameters { alg: CoseKeyAlgorithmIdentifier::RS256, crv: None, },
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, PartialEq)]
+    pub enum CoseKeyAlgorithmIdentifier {
+        ES256,
+        EdDSA,
+        RS256,
+    }
+
+    impl From<CoseKeyAlgorithmIdentifier> for i64 {
+        fn from(value: CoseKeyAlgorithmIdentifier) -> Self {
+            match value {
+                CoseKeyAlgorithmIdentifier::ES256 => -7,
+                CoseKeyAlgorithmIdentifier::EdDSA => -8,
+                CoseKeyAlgorithmIdentifier::RS256 => -257,
+            }
+        }
+    }
+
+    impl From<CoseKeyAlgorithmIdentifier> for i128 {
+        fn from(value: CoseKeyAlgorithmIdentifier) -> Self {
+            match value {
+                CoseKeyAlgorithmIdentifier::ES256 => -7,
+                CoseKeyAlgorithmIdentifier::EdDSA => -8,
+                CoseKeyAlgorithmIdentifier::RS256 => -257,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, PartialEq)]
+    pub enum CoseEllipticCurveIdentifier {
+        /// P-256 Elliptic Curve using uncompressed points.
+        P256,
+        /// P-384 Elliptic Curve using uncompressed points.
+        P384,
+        /// P-521 Elliptic Curve using uncompressed points.
+        P521,
+        /// Ed25519 Elliptic Curve using compressed points.
+        Ed25519,
+    }
+
+    impl From<CoseEllipticCurveIdentifier> for i64 {
+        fn from(value: CoseEllipticCurveIdentifier) -> Self {
+            match value {
+                CoseEllipticCurveIdentifier::P256 => 1,
+                CoseEllipticCurveIdentifier::P384 => 2,
+                CoseEllipticCurveIdentifier::P521 => 3,
+                CoseEllipticCurveIdentifier::Ed25519 => 6,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub enum Error {
+        InvalidKey,
+    }
+    pub(super) fn encode_public_key(
+        key_type: CoseKeyType,
+        pkcs8_key: &[u8],
+    ) -> Result<Vec<u8>, Error> {
+        match key_type {
+            CoseKeyType::ES256_P256 => {
+                let key_pair = EcdsaKeyPair::from_pkcs8(
+                    &ECDSA_P256_SHA256_ASN1_SIGNING,
+                    pkcs8_key,
+                    &SystemRandom::new(),
+                )
+                .unwrap();
+                let public_key = key_pair.public_key().as_ref();
+                // ring outputs public keys with uncompressed 32-byte x and y coordinates
+                if public_key.len() != 65 || public_key[0] != 0x04 {
+                    return Err(Error::InvalidKey);
+                }
+                let (x, y) = public_key[1..].split_at(32);
+                let mut cose_key: Vec<u8> = Vec::new();
+                cose_key.push(0b101_00101); // map with 5 items
+                cose_key.extend([0b000_00001, 0b000_00010]); // kty (1): EC2 (2)
+                cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): ECDSA-SHA256 (-7)
+                cose_key.extend([0b001_00000, 0b000_00001]); // crv (-1): P256 (1)
+                cose_key.extend([0b001_00001, 0b010_11000, 0b0010_0000]); // x (-2): <32-byte string>
+                cose_key.extend(x);
+                cose_key.extend([0b001_00010, 0b010_11000, 0b0010_0000]); // y (-3): <32-byte string>
+                cose_key.extend(y);
+                Ok(cose_key)
+            }
+            CoseKeyType::EdDSA_Ed25519 => {
+                // TODO: Check this
+                let key_pair = Ed25519KeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::InvalidKey)?;
+                let public_key = key_pair.public_key().as_ref();
+                let mut cose_key: Vec<u8> = Vec::new();
+                cose_key.push(0b101_00100); // map with 4 items
+                cose_key.extend([0b000_00001, 0b000_00001]); // kty (1): OKP (1)
+                cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): EdDSA (-8)
+                cose_key.extend([0b001_00000, 0b000_00110]); // crv (-1): ED25519 (6)
+                cose_key.extend([0b001_00001, 0b010_11000, 0b0010_0000]); // x (-2): <32-byte string>
+                cose_key.extend(public_key);
+                Ok(cose_key)
+            }
+            CoseKeyType::RS256 => {
+                let key_pair = RsaKeyPair::from_pkcs8(pkcs8_key).map_err(|_| Error::InvalidKey)?;
+                let public_key = key_pair.public_key().as_ref();
+                // TODO: This is ASN.1 with DER encoding. We could parse this to extract
+                // the modulus and exponent properly, but the key length will
+                // probably not change, so we're winging it
+                // https://stackoverflow.com/a/12750816/11931787
+                let n = &public_key[9..(9 + 256)];
+                let e = &public_key[public_key.len() - 3..];
+                debug_assert_eq!(n.len(), key_pair.public_modulus_len());
+                let mut cose_key: Vec<u8> = Vec::new();
+                cose_key.push(0b101_00100); // map with 4 items
+                cose_key.extend([0b000_00001, 0b000_00010]); // kty (1): RSA (3)
+                cose_key.extend([0b000_00011, 0b001_00110]); // alg (3): RSASSA-PKCS1-v1_5 using SHA-256 (-257)
+                cose_key.extend([0b001_00000, 0b010_11001, 0b0000_0001, 0b0000_0000]); // n (-1): <256-byte string>
+                cose_key.extend(n);
+                cose_key.extend([0b001_00001, 0b010_00011]); // e (-2): <3-byte string>
+                cose_key.extend(e);
+                Ok(cose_key)
+            }
+            _ => todo!(),
+        }
     }
 }
