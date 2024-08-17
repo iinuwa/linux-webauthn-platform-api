@@ -79,7 +79,7 @@ pub(crate) async fn store_secret<'a>(
         }
     }
 
-    cred_file.write(b"\r\n").unwrap();
+    cred_file.write_all(b"\r\n").unwrap();
 
     cred_file.write_all(contents).unwrap();
     Ok(id)
@@ -116,9 +116,9 @@ pub(crate) async fn lookup_password_credentials(origin: &str) -> Option<(String,
                 }
                 if origin_matches && content_type.is_some_and(|ct| ct == "secret/password") {
                     let body = &cred[boundary + 4..];
-                    for pair in body.split("&") {
+                    for pair in body.split('&') {
                         let decoded = pair.replace("%26", "&").replace("%25", "%");
-                        if let Some((key, value)) = decoded.split_once("=") {
+                        if let Some((key, value)) = decoded.split_once('=') {
                             if key == "id" {
                                 id = Some(value.to_string())
                             } else if key == "password" {
