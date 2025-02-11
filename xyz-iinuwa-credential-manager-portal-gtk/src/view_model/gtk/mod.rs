@@ -85,29 +85,32 @@ impl ViewModel {
     fn setup_channel(&self, tx: Sender<ViewEvent>, rx: Receiver<ViewUpdate>) {
         self.imp().tx.replace(Some(tx));
         self.imp().rx.replace(Some(rx));
-        glib::spawn_future_local(clone!(@weak self as view_model => async move {
-            loop {
-                let rx = view_model.imp().rx.borrow();
-                let rx = rx.as_ref().expect("rx to exist");
-                match rx.recv().await {
-                    Ok(update) => {
-                        match update {
-                            ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
-                            ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
-                            ViewUpdate::SetCredentials(credentials) => { view_model.update_credentials(&credentials) },
-                            ViewUpdate::SelectDevice(device) => { view_model.select_device(&device) },
-                            ViewUpdate::SelectCredential(cred_id) => { view_model.select_credential(cred_id) },
-                            ViewUpdate::UsbNeedsPin => { view_model.set_usb_pin_entry_visible(true) },
-                            ViewUpdate::Completed => { view_model.set_completed(true) },
+        glib::spawn_future_local(clone!(
+            #[weak(rename_to = view_model)] self,
+            async move {
+                loop {
+                    let rx = view_model.imp().rx.borrow();
+                    let rx = rx.as_ref().expect("rx to exist");
+                    match rx.recv().await {
+                        Ok(update) => {
+                            match update {
+                                ViewUpdate::SetTitle(title) => { view_model.set_title(title) },
+                                ViewUpdate::SetDevices(devices) => { view_model.update_devices(&devices) },
+                                ViewUpdate::SetCredentials(credentials) => { view_model.update_credentials(&credentials) },
+                                ViewUpdate::SelectDevice(device) => { view_model.select_device(&device) },
+                                ViewUpdate::SelectCredential(cred_id) => { view_model.select_credential(cred_id) },
+                                ViewUpdate::UsbNeedsPin => { view_model.set_usb_pin_entry_visible(true) },
+                                ViewUpdate::Completed => { view_model.set_completed(true) },
+                            }
+                        },
+                        Err(e) => {
+                            debug!("ViewModel event listener interrupted: {}", e);
+                            break;
                         }
-                    },
-                    Err(e) => {
-                        debug!("ViewModel event listener interrupted: {}", e);
-                        break;
                     }
                 }
             }
-        }));
+        ));
     }
 
     fn update_devices(&self, devices: &[Device]) {

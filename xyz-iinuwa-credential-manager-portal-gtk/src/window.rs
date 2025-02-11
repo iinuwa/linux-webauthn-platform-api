@@ -40,9 +40,12 @@ mod imp {
             println!("clicked");
             let view_model = &self.view_model.borrow();
             let view_model = view_model.as_ref().unwrap();
-            glib::spawn_future_local(clone!(@weak view_model => async move {
-                view_model.send_thingy().await;
-            }));
+            glib::spawn_future_local(clone!(
+                #[weak] view_model,
+                async move {
+                    view_model.send_thingy().await;
+                }
+            ));
         }
 
         #[template_callback]
@@ -50,9 +53,12 @@ mod imp {
             let view_model = &self.view_model.borrow();
             let view_model = view_model.as_ref().unwrap();
             let pin = entry.text().to_string();
-            glib::spawn_future_local(clone!(@weak view_model => async move {
-                view_model.send_usb_device_pin(pin).await;
-            }));
+            glib::spawn_future_local(clone!(
+                #[weak] view_model,
+                async move {
+                    view_model.send_usb_device_pin(pin).await;
+                }
+            ));
         }
 
         #[template_callback]
@@ -60,9 +66,12 @@ mod imp {
             let view_model = &self.view_model.borrow();
             let view_model = view_model.as_ref().unwrap();
             let pin = entry.text().to_string();
-            glib::spawn_future_local(clone!(@weak view_model => async move {
-                view_model.send_internal_device_pin(pin).await;
-            }));
+            glib::spawn_future_local(clone!(
+                #[weak] view_model,
+                 async move {
+                    view_model.send_internal_device_pin(pin).await;
+                }
+            ));
         }
     }
 
@@ -148,37 +157,45 @@ impl ExampleApplicationWindow {
         let view_model = &self.view_model();
         let view_model = view_model.as_ref().expect("view model to exist");
         let stack: &gtk::Stack = &self.imp().stack.get();
-        view_model.connect_selected_device_notify(clone!(@weak stack => move |vm| {
-            let d = vm.selected_device();
-            let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
-            match d.transport().try_into() {
-                // TODO: Can multiple resident_keys exist on USB for same origin?
-                //       If so, we need to transition this to choose_credential as well.
-                //       For now, we'll skip it.
-                Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
-                Ok(Transport::Internal) => stack.set_visible_child_name("choose_credential"),
-                _ => { },
-            };
-        }));
+        view_model.connect_selected_device_notify(clone!(
+            #[weak] stack,
+            move |vm| {
+                let d = vm.selected_device();
+                let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
+                match d.transport().try_into() {
+                    // TODO: Can multiple resident_keys exist on USB for same origin?
+                    //       If so, we need to transition this to choose_credential as well.
+                    //       For now, we'll skip it.
+                    Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
+                    Ok(Transport::Internal) => stack.set_visible_child_name("choose_credential"),
+                    _ => { },
+                };
+            }));
 
-        view_model.connect_selected_credential_notify(clone!(@weak stack => move |vm| {
-            let c = vm.selected_credential();
-            if c.is_none() || c.unwrap().is_empty() { return; }
+        view_model.connect_selected_credential_notify(clone!(
+            #[weak] stack,
+            move |vm| {
+                let c = vm.selected_credential();
+                if c.is_none() || c.unwrap().is_empty() { return; }
 
-            let d = vm.selected_device();
-            let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
-            match d.transport().try_into() {
-                Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
-                Ok(Transport::Internal) => stack.set_visible_child_name("internal"),
-                _ => { },
-            };
-        }));
-
-        view_model.connect_completed_notify(clone!(@weak stack => move |vm| {
-            if vm.completed() {
-                stack.set_visible_child_name("completed");
+                let d = vm.selected_device();
+                let d = d.and_downcast_ref::<DeviceObject>().expect("selected device to exist at notify");
+                match d.transport().try_into() {
+                    Ok(Transport::Usb) => stack.set_visible_child_name("usb"),
+                    Ok(Transport::Internal) => stack.set_visible_child_name("internal"),
+                    _ => { },
+                };
             }
-        }));
+        ));
+
+        view_model.connect_completed_notify(clone!(
+            #[weak] stack,
+            move |vm| {
+                if vm.completed() {
+                    stack.set_visible_child_name("completed");
+                }
+            }
+        ));
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {

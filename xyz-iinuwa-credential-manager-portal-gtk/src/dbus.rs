@@ -9,7 +9,7 @@ use gettextrs::{gettext, LocaleCategory};
 use gtk::{gio, glib};
 
 use zbus::zvariant::{DeserializeDict, SerializeDict, Type};
-use zbus::{fdo, interface, Connection, ConnectionBuilder, Result};
+use zbus::{fdo, interface, connection::{self, Connection}, Result};
 
 use crate::application::ExampleApplication;
 use crate::config::{GETTEXT_PACKAGE, LOCALEDIR, RESOURCES_FILE};
@@ -28,7 +28,7 @@ pub(crate) async fn start_service(service_name: &str, path: &str) -> Result<Conn
     let (gui_tx, gui_rx) = async_std::channel::bounded(1);
     let lock: Arc<AsyncMutex<Sender<Sender<(Device, String)>>>> = Arc::new(AsyncMutex::new(gui_tx));
     start_gui_thread(gui_rx);
-    ConnectionBuilder::session()?
+    connection::Builder::session()?
         .name(service_name)?
         .serve_at(path, CredentialManager { app_lock: lock })?
         .build()
