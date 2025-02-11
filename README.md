@@ -84,6 +84,6 @@ Alternatively, lock out the credential based on incorrect attempts.
 
 
 ## Related projects:
-- https://github.com/AlfioEmanueleFresta/xdg-credentials-portal
+- https://github.com/linux-credentials/libwebauthn (previously https://github.com/AlfioEmanueleFresta/xdg-credentials-portal)
 - authenticator-rs
 - webauthn-rs
